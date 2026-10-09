@@ -79,7 +79,7 @@ export function teamOf(c: CourtState, p: string): Team | null {
 
 // After a touch of this skill, does the next touch come from the other side (true), the same side
 // (false), or can't we tell (undefined)? Blocks and "other" touches can go either way.
-const CROSSES: Partial<Record<Skill, boolean>> = { serve: true, attack: true, receive: false, dig: false, set: false };
+const CROSSES: Partial<Record<Skill, boolean>> = { serve: true, attack: true, free: true, receive: false, dig: false, set: false };
 
 /** Team of every touch: named players are known; guests are inferred from neighbouring touches. */
 function touchTeams(c: CourtState, ts: Touch[]): (Team | null)[] {

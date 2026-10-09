@@ -5,9 +5,9 @@ import { createPlayer, type YTPlayer } from '../lib/youtube';
 import { Link, useParams } from 'react-router-dom';
 import { AttrBar, PlayerCard } from '../components/PlayerCard';
 import { useRatedPlayers } from '../lib/rated';
-import { METRICS, experience, type MetricKey, type RatingModel } from '../lib/engine';
+import { METRICS, experience, metricsFor, type RatingModel } from '../lib/engine';
 import { fmtTime, useGames } from '../lib/games';
-import { STAT_GROUPS, STAT_LABELS, computeStats, ratio, taggedGames, type StatKey } from '../lib/stats';
+import { STAT_GROUPS, STAT_LABELS, avgGrade, computeStats, ratio, taggedGames, type StatKey } from '../lib/stats';
 import { CATEGORIES, POSITIONS, categoryScore, overall, type Position } from '../lib/ratings';
 
 export function Players() {
@@ -98,6 +98,8 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
     ['Ace %', ratio(c('ace'), c('serve'))],
     ['Serve in %', c('serve') ? `${Math.round((100 * (c('serve') - c('serr'))) / c('serve'))}%` : '–'],
     ['Pass error %', ratio(c('rerr'), c('receive'))],
+    ['Pass rating', avgGrade(c('pass3'), c('pass2'), c('pass1'))],
+    ['Set rating', avgGrade(c('set3'), c('set2'), c('set1'))],
   ];
   return (
     <section className="rounded-xl border border-line bg-surface p-4">
@@ -105,7 +107,7 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
         <h2 className="font-display text-lg font-semibold">Game stats</h2>
         <span className="text-xs text-muted">from {n} tagged game{n === 1 ? '' : 's'}</span>
       </div>
-      <div className="mt-3 grid grid-cols-5 gap-1.5 text-center">
+      <div className="mt-3 grid grid-cols-4 gap-1.5 text-center sm:grid-cols-7">
         {rates.map(([label, v]) => (
           <div key={label} className="rounded-lg bg-raised/50 py-2">
             <div className="font-display text-lg font-bold">{v}</div>
@@ -152,8 +154,7 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
 
 /** Attribute bar; for attributes stats can measure, a line explaining starting rating + stats. */
 function Attr({ k, label, p, model }: { k: string; label: string; p: { id: string; ratings: Record<string, number | undefined>; base: Record<string, number | undefined> }; model: RatingModel }) {
-  const a = model.adj[p.id]?.[k as MetricKey];
-  const m = METRICS[k as MetricKey];
+  const ms = metricsFor(k);
   const exp = experience(p.id, model), games = model.gamesPlayed[p.id] ?? 0;
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   const num = (x: number) => (Math.round(x * 10) / 10).toString();
@@ -164,10 +165,15 @@ function Attr({ k, label, p, model }: { k: string; label: string; p: { id: strin
         <p className="-mt-0.5 mb-1 pl-0.5 text-[11px] leading-snug text-muted">
           Start {p.base[k]}
           {exp > 0 && <> + {num(exp)} experience ({games} game{games === 1 ? '' : 's'})</>}
-          {a && <> {a.delta >= 0 ? '+' : '−'} {num(Math.abs(a.delta))} stats · {m.label} {pct(a.rawValue)}
-            {pct(a.value) !== pct(a.rawValue) && <span title="Counted after weighting recent sessions more and applying each game's strength"> ({pct(a.value)} weighted)</span>}
-            {' '}vs team {pct(a.bench)} ({Math.round(a.rawAttempts)} {Math.round(a.rawAttempts) === 1 ? 'try' : 'tries'})</>}
-          {m && !a && <> · no tagged {m.label.toLowerCase()} data yet</>}
+          {ms.map(mk => {
+            const a = model.adj[p.id]?.[mk], m = METRICS[mk];
+            if (!a) return m.graded ? null : <span key={mk}> · no tagged {m.label.toLowerCase()} data yet</span>;
+            return (
+              <span key={mk}> {a.delta >= 0 ? '+' : '−'} {num(Math.abs(a.delta))} {m.label.toLowerCase()} {pct(a.rawValue)}
+                {pct(a.value) !== pct(a.rawValue) && <span title="Counted after weighting recent sessions more and applying each game's strength"> ({pct(a.value)} weighted)</span>}
+                {' '}vs team {pct(a.bench)} ({Math.round(a.rawAttempts)} {Math.round(a.rawAttempts) === 1 ? 'try' : 'tries'})</span>
+            );
+          })}
         </p>
       )}
     </div>

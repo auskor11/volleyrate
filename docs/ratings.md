@@ -27,20 +27,28 @@ experience = min(expMax, expPerGame × games played)
 
 ## 3. Stats adjustment
 
-Only six attributes can be measured from tagged touches:
+Only six attributes can be measured from tagged touches. Setting and Receiving have two metrics each, and their adjustments are **added together**.
 
 | Attribute | Metric | Formula | rate | k |
 |---|---|---|---|---|
 | Spiking | Hitting efficiency | (kills − attack errors − times blocked) ÷ attacks | 0.5 | 25 |
 | Serving | Serve efficiency | (aces − serve errors) ÷ serves | 0.5 | 25 |
 | Setting | Set efficiency | (assists − set errors) ÷ sets | 0.4 | 25 |
+| Setting | Set quality *(graded)* | (average grade of non-error sets − 1) ÷ 2 | 0.3 | 25 |
 | Receiving | Ball control | 1 − (receive + dig errors) ÷ (receives + digs) | 1.0 | 25 |
+| Receiving | Pass quality *(graded)* | (average grade of non-error receives + digs − 1) ÷ 2 | 0.3 | 25 |
 | Blocking | Block efficiency | (block points − block errors) ÷ block touches | 0.5 | 15 |
 | Consistency | Error rate | errors ÷ all touches (lower is better) | −1.5 | 25 |
 
 ```
 adjustment = rate × strength × (player metric − team benchmark) × 100 × n / (n + k × dataScale)
+attribute's stats adjustment = sum of its metrics' adjustments
 ```
+
+**Graded metrics:**
+- Grades are optional: passes 3 perfect / 2 OK / 1 poor, sets 3 good / 2 OK / 1 poor.
+- **Scale:** the average grade is put on a 0–100% scale, so 1.0 = 0%, 2.0 = 50%, 3.0 = 100%. `n` is the number of graded touches.
+- **Errors are left out:** a touch that ended the rally as an error isn't graded here. Errors already count in Set efficiency and Ball control, so they aren't counted twice.
 
 - **`(metric − benchmark) × 100`**: how many percentage points better or worse than the team the player is.
 - **`rate`**: rating points per percentage point. Consistency's rate is negative because a *lower* error rate is better.
@@ -52,6 +60,7 @@ adjustment = rate × strength × (player metric − team benchmark) × 100 × n 
 - The benchmark is the whole team's pooled metric over the first sessions that hold 5 tagged games.
 - It always uses whole sessions: every game dated on or before the 5th game's date is included.
 - After that it stays fixed. If the team improves, everyone's ratings go up, rather than the average being reset each time.
+- **Graded metrics** (set and pass quality) count from the first sessions holding 5 games **that have grades**, since older games have none. Until 5 graded games exist, their benchmark uses whatever graded games there are.
 - It uses plain (unweighted) counts from every player except guests.
 
 ### Recent games count more
@@ -93,6 +102,8 @@ A rally counts only if it is not marked "Not a rally", has touches tagged, and h
 
 - A player is never credited for their own touch: no assist for setting yourself, and no "blocked" for blocking your own attack.
 - Guests are left out of both ratings and the benchmark. Their touches still affect credit: for example, a guest's serve still makes the next receive error count as forced (0.5).
+- **Free ball** (an easy ball sent over) counts as a touch, so it counts for Consistency, and an error on it counts as an error. It is **not an attack**, so it doesn't affect hitting efficiency, and it can't force an error.
+- **Attack type** (spike / tip / roll shot) doesn't change any rating. Every attack still counts for Spiking. Types are for stats only: tips, roll shots, and kills from each.
 - Old point-only tags (one tag per rally) appear in the stats lists but are **ignored by the ratings**, because they have no attempt counts.
 
 ## 5. Applying a game (admin)
@@ -127,6 +138,11 @@ The sliders preview the new ratings before saving.
 - confidence = 20 / (20 + 10) = 0.667
 - adjustment = 0.5 × 1.2 × (25 − 10) × 0.667 = **+6.0**
 - shown Spiking = round(70 + 2 + 6.0) = **78**
+
+**Pass quality** (Receiving's second metric):
+- 20 graded passes averaging 2.6, i.e. (2.6 − 1) ÷ 2 = 80%; team benchmark 60%.
+- confidence = 20 / (20 + 10) = 0.667
+- adjustment = 0.3 × 1.2 × (80 − 60) × 0.667 = **+4.8**, added to Ball control's adjustment
 
 **Consistency:**
 - 60 weighted touches with an 8% error rate; team benchmark 12%.

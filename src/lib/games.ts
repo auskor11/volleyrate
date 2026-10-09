@@ -42,19 +42,30 @@ export function useHistory(gameId: string, enabled: boolean) {
 }
 
 export const SKILLS = {
-  serve: 'Serve', receive: 'Receive', set: 'Set', attack: 'Attack', block: 'Block', dig: 'Dig', other: 'Other',
+  serve: 'Serve', receive: 'Receive', set: 'Set', attack: 'Attack', block: 'Block', dig: 'Dig', free: 'Free ball', other: 'Other',
 } as const;
 export type Skill = keyof typeof SKILLS;
 
-// p = player id or 'guest'; t = video time of the touch
-export interface Touch { p: string; k: Skill; t: number }
+// p = player id or 'guest'; t = video time of the touch.
+// Optional detail: q = quality of a receive / dig / set (3 perfect or good, 2 OK, 1 poor);
+// a = attack type when it isn't a spike (missing = spike).
+export interface Touch { p: string; k: Skill; t: number; q?: Grade; a?: AttackType }
+export type Grade = 1 | 2 | 3;
+export type AttackType = 'tip' | 'roll';
+export const ATTACK_TYPES: Record<'spike' | AttackType, string> = { spike: 'Spike', tip: 'Tip', roll: 'Roll shot' };
+/** Skills that can be graded 3 / 2 / 1. */
+export const GRADED: Skill[] = ['receive', 'dig', 'set'];
+export const GRADE_LABELS: Record<'pass' | 'set', Record<Grade, string>> = {
+  pass: { 3: 'Perfect', 2: 'OK', 1: 'Poor' },
+  set: { 3: 'Good', 2: 'OK', 1: 'Poor' },
+};
 export interface RallyEnd { i: number; r: 'point' | 'error' }
 
 /** Most likely next skill given the touches so far (the natural order of play). */
 export function nextSkill(touches: Touch[]): Skill {
   const last = touches[touches.length - 1]?.k;
   if (!last) return 'serve';
-  return ({ serve: 'receive', receive: 'set', dig: 'set', set: 'attack', attack: 'dig', block: 'dig', other: 'set' } as const)[last];
+  return ({ serve: 'receive', receive: 'set', dig: 'set', set: 'attack', attack: 'dig', block: 'dig', free: 'receive', other: 'set' } as const)[last];
 }
 
 // A defensive error right after the other side's serve / attack / block also scores for that touch:

@@ -4,7 +4,9 @@
 //   adjustment = rate × (player's metric − frozen team benchmark) × attempts / (attempts + k)
 //
 // - Benchmark: the team's pooled metric over the first sessions holding 5 touch-tagged games, then fixed,
-//   so everyone's ratings can rise as the team improves.
+//   so everyone's ratings can rise as the team improves. Graded metrics (pass / set quality) start
+//   later, so they count from the first sessions holding 5 games with grades.
+// - Setting and Receiving each have two metrics; their adjustments add up.
 // - Recent sessions count more: a session's weight halves every 8 sessions (all games on one date equal).
 // - Only rallies tagged touch-by-touch (with a result) count; quick point tags lack attempt counts.
 // - No caps beyond the 0–99 scale.
@@ -27,16 +29,22 @@ export const DEFAULT_SETTINGS: EngineSettings = { strength: 1.6, dataScale: 0.4,
 // it counts this much against Receiving and Consistency (the attacker still gets full credit).
 export const FORCED_ERROR_WEIGHT = 0.5;
 
-// What each measurable attribute is based on. `rate` = rating points per percentage point.
+// What the measurable attributes are based on. `attr` = the attribute a metric adjusts; `rate` = rating
+// points per percentage point; `graded` = built from optional quality grades (own benchmark start).
+// Quality metrics put the 1–3 grade on a 0–100% scale: (average grade − 1) ÷ 2, so 1 = 0%, 2 = 50%, 3 = 100%.
 export const METRICS = {
-  spiking: { label: 'Hitting efficiency', rate: 0.5, k: 25, what: '(kills − attack errors − times blocked) ÷ attacks' },
-  serving: { label: 'Serve efficiency', rate: 0.5, k: 25, what: '(aces − serve errors) ÷ serves' },
-  setting: { label: 'Set efficiency', rate: 0.4, k: 25, what: '(assists − set errors) ÷ sets' },
-  receiving: { label: 'Ball control', rate: 1.0, k: 25, what: 'receives + digs without an error ÷ receives + digs' },
-  blocking: { label: 'Block efficiency', rate: 0.5, k: 15, what: '(block points − block errors) ÷ block touches' },
-  consistency: { label: 'Error rate', rate: -1.5, k: 25, what: 'errors ÷ all touches (lower is better)' },
+  spiking: { attr: 'spiking', label: 'Hitting efficiency', rate: 0.5, k: 25, graded: false, what: '(kills − attack errors − times blocked) ÷ attacks' },
+  serving: { attr: 'serving', label: 'Serve efficiency', rate: 0.5, k: 25, graded: false, what: '(aces − serve errors) ÷ serves' },
+  setting: { attr: 'setting', label: 'Set efficiency', rate: 0.4, k: 25, graded: false, what: '(assists − set errors) ÷ sets' },
+  setQuality: { attr: 'setting', label: 'Set quality', rate: 0.3, k: 25, graded: true, what: 'average grade of sets that weren\'t errors (good 3, OK 2, poor 1)' },
+  receiving: { attr: 'receiving', label: 'Ball control', rate: 1.0, k: 25, graded: false, what: 'receives + digs without an error ÷ receives + digs' },
+  passQuality: { attr: 'receiving', label: 'Pass quality', rate: 0.3, k: 25, graded: true, what: 'average grade of receives + digs that weren\'t errors (perfect 3, OK 2, poor 1)' },
+  blocking: { attr: 'blocking', label: 'Block efficiency', rate: 0.5, k: 15, graded: false, what: '(block points − block errors) ÷ block touches' },
+  consistency: { attr: 'consistency', label: 'Error rate', rate: -1.5, k: 25, graded: false, what: 'errors ÷ all touches (lower is better)' },
 } as const;
 export type MetricKey = keyof typeof METRICS;
+/** Metrics that adjust an attribute (Setting and Receiving have two). */
+export const metricsFor = (attr: string) => (Object.keys(METRICS) as MetricKey[]).filter(m => METRICS[m].attr === attr);
 
 // Raw counts per player per game.
 interface Counts {
@@ -46,10 +54,13 @@ interface Counts {
   sets: number; assists: number; setErr: number;
   ctrl: number; ctrlErr: number;          // receives + digs
   blocks: number; blockPts: number; blockErr: number;
+  passQ: number; passN: number;           // sum and count of grades on non-error receives + digs
+  setQ: number; setN: number;             // …and on non-error sets
 }
 const zero = (): Counts => ({
   touches: 0, errors: 0, attacks: 0, kills: 0, aerr: 0, blocked: 0, serves: 0, aces: 0, serr: 0,
   sets: 0, assists: 0, setErr: 0, ctrl: 0, ctrlErr: 0, blocks: 0, blockPts: 0, blockErr: 0,
+  passQ: 0, passN: 0, setQ: 0, setN: 0,
 });
 
 function gameCounts(g: Game): Record<string, Counts> {
@@ -61,10 +72,16 @@ function gameCounts(g: Game): Record<string, Counts> {
   for (const r of g.rallies) {
     if (r.st === 'bad' || !r.touches?.length || !r.end) continue;
     const ts = r.touches;
-    for (const t of ts) {
+    const erred = r.end.r === 'error' ? r.end.i : -1;
+    ts.forEach((t, j) => {
       c(t.p).touches++;
       const a = ATT[t.k]; if (a) c(t.p)[a]++;
-    }
+      // optional grades, on touches that weren't the rally-ending error (errors count elsewhere)
+      if (t.q && j !== erred) {
+        if (t.k === 'receive' || t.k === 'dig') { c(t.p).passQ += t.q; c(t.p).passN++; }
+        if (t.k === 'set') { c(t.p).setQ += t.q; c(t.p).setN++; }
+      }
+    });
     const t = ts[r.end.i], prev = ts[r.end.i - 1];
     if (!t) continue;
     const credit = (i: number) => {  // point for touch i (+ assist / blocked bookkeeping)
@@ -93,6 +110,8 @@ function metric(k: MetricKey, c: Counts): [number, number] {
     case 'spiking': return [(c.kills - c.aerr - c.blocked) / c.attacks, c.attacks];
     case 'serving': return [(c.aces - c.serr) / c.serves, c.serves];
     case 'setting': return [(c.assists - c.setErr) / c.sets, c.sets];
+    case 'setQuality': return [(c.setQ / c.setN - 1) / 2, c.setN];
+    case 'passQuality': return [(c.passQ / c.passN - 1) / 2, c.passN];
     case 'receiving': return [1 - c.ctrlErr / c.ctrl, c.ctrl];
     case 'blocking': return [(c.blockPts - c.blockErr) / c.blocks, c.blocks];
     case 'consistency': return [c.errors / c.touches, c.touches];
@@ -118,6 +137,7 @@ export interface RatingModel {
   gamesPlayed: Record<string, number>;  // tagged games each player has touches in
   taggedGames: Game[];          // games with touch-tagged rallies, oldest first
   benchmarkFrom: number;        // how many games the benchmark uses
+  benchFrom: Partial<Record<MetricKey, number>>;  // …per metric (graded metrics start later)
   bench: Partial<Record<MetricKey, number>>;
   adj: Record<string, Partial<Record<MetricKey, Adjustment>>>;  // player → attribute → adjustment
 }
@@ -137,17 +157,27 @@ export function buildModel(
     .sort((a, b) => a.date.localeCompare(b.date));
   const per = tagged.map(gameCounts);
 
-  // frozen benchmark: whole team over the first N tagged games
-  // whole sessions only: include every game dated on or before the date of the Nth game
-  const cutoff = tagged[Math.min(ENGINE.benchmarkGames, tagged.length) - 1]?.date;
-  const nb = cutoff ? tagged.filter(g => g.date <= cutoff).length : 0;
-  const team = zero();
-  per.slice(0, nb).forEach(g => Object.values(g).forEach(c => addInto(team, c)));
-  const bench: RatingModel['bench'] = {};
-  for (const k of Object.keys(METRICS) as MetricKey[]) {
+  // frozen benchmark: whole team over the first N tagged games (for graded metrics: the first N games
+  // with grades). Whole sessions only: every game dated on or before the date of the Nth game counts.
+  const teamOf = (g: Record<string, Counts>) => { const t = zero(); Object.values(g).forEach(c => addInto(t, c)); return t; };
+  const perTeam = per.map(teamOf);
+  const benchFor = (k: MetricKey): [number | undefined, number] => {
+    const idx = tagged.map((_, i) => i).filter(i => !METRICS[k].graded || metric(k, perTeam[i])[1] > 0);
+    const cutoff = tagged[idx[Math.min(ENGINE.benchmarkGames, idx.length) - 1]]?.date;
+    if (!cutoff) return [undefined, 0];
+    const team = zero();
+    let used = 0;
+    tagged.forEach((g, i) => { if (g.date <= cutoff) { addInto(team, perTeam[i]); used++; } });
     const [v, n] = metric(k, team);
-    if (n > 0) bench[k] = v;
+    return [n > 0 ? v : undefined, used];
+  };
+  const bench: RatingModel['bench'] = {};
+  const benchFrom: RatingModel['benchFrom'] = {};
+  for (const k of Object.keys(METRICS) as MetricKey[]) {
+    const [v, used] = benchFor(k);
+    if (v !== undefined) { bench[k] = v; benchFrom[k] = used; }
   }
+  const nb = benchFrom.spiking ?? 0;
 
   // recency-weighted totals per player
   const sessions = [...new Set(tagged.map(g => g.date))].sort();
@@ -178,7 +208,7 @@ export function buildModel(
       };
     }
   }
-  return { settings, gamesPlayed, taggedGames: tagged, benchmarkFrom: nb, bench, adj };
+  return { settings, gamesPlayed, taggedGames: tagged, benchmarkFrom: nb, benchFrom, bench, adj };
 }
 
 /** Experience bonus for a player: per tagged game played, up to the maximum. */
@@ -193,8 +223,8 @@ export function effectiveRatings(p: Player, model: RatingModel): Ratings {
   const exp = experience(p.id, model);
   for (const [k, base] of Object.entries(p.ratings)) {
     if (typeof base !== 'number') continue;
-    const a = model.adj[p.id]?.[k as MetricKey];
-    out[k] = Math.max(0, Math.min(99, Math.round(base + exp + (a?.delta ?? 0))));
+    const stats = metricsFor(k).reduce((sum, m) => sum + (model.adj[p.id]?.[m]?.delta ?? 0), 0);
+    out[k] = Math.max(0, Math.min(99, Math.round(base + exp + stats)));
   }
   return out;
 }

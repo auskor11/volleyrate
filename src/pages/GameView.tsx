@@ -3,11 +3,11 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth';
 import { usePlayers, type Player } from '../lib/data';
 import {
-  SKILLS, deleteGame, fmtTime, isTagged, nextSkill, rallyResult, saveRallies, suggestTouches, updateGame, useGame,
-  type Game, type Rally, type RallyEnd, type Skill, type Touch,
+  ATTACK_TYPES, GRADED, GRADE_LABELS, SKILLS, deleteGame, fmtTime, isTagged, nextSkill, rallyResult, saveRallies, suggestTouches,
+  updateGame, useGame, type AttackType, type Game, type Grade, type Rally, type RallyEnd, type Skill, type Touch,
 } from '../lib/games';
 import { createPlayer, type YTPlayer } from '../lib/youtube';
-import { computeStats, type StatKey } from '../lib/stats';
+import { avgGrade, computeStats, type StatKey } from '../lib/stats';
 import { buildModel, effectiveRatings, type RatingModel } from '../lib/engine';
 import { useEngineSettings } from '../lib/rated';
 import { createBackup } from '../lib/backups';
@@ -71,7 +71,9 @@ const SKILL_KEYS = Object.keys(SKILLS) as Skill[];
  */
 const REACTION = 0.3;  // seconds between seeing a touch and tapping the name
 const PLAYER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
-const SKILL_KEYS_KB: Record<string, Skill> = { q: 'serve', w: 'receive', e: 'set', r: 'attack', t: 'block', y: 'dig', u: 'other' };
+const SKILL_KEYS_KB: Record<string, Skill> = { q: 'serve', w: 'receive', e: 'set', r: 'attack', t: 'block', y: 'dig', i: 'free', u: 'other' };
+// grade the last touch (receive / dig / set: 3 / 2 / 1) or say what kind of attack it was
+const DETAIL_KEYS = ['a', 's', 'd'];
 const SKILL_KEY_OF = Object.fromEntries(Object.entries(SKILL_KEYS_KB).map(([k, v]) => [v, k])) as Record<Skill, string>;
 
 function Kbd({ k }: { k: string }) {
@@ -139,9 +141,27 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   const doubled = touches.findIndex((x, i) => i > 0 && x.p !== 'guest' && x.p === touches[i - 1].p);
   const finish = (i: number, r: RallyEnd['r']) => { onChange(touches, { i, r }); onDone(); };
 
+  // optional detail for the selected touch (or the latest one): a grade, or the attack type
+  const di = sel ?? (saved.length ? saved.length - 1 : -1);
+  const dt = !pre && di >= 0 ? saved[di] : undefined;
+  const detailOpts: { label: string; on: boolean; set: () => void }[] = !dt ? []
+    : GRADED.includes(dt.k) ? ([3, 2, 1] as Grade[]).map(q => ({
+        label: `${q} ${GRADE_LABELS[dt.k === 'set' ? 'set' : 'pass'][q]}`, on: dt.q === q,
+        set: () => setDetail(di, x => { const { q: _q, ...rest } = x; return dt.q === q ? rest : { ...rest, q }; }),
+      }))
+    : dt.k === 'attack' ? (['spike', 'tip', 'roll'] as const).map(a => ({
+        label: ATTACK_TYPES[a], on: (dt.a ?? 'spike') === a,
+        set: () => setDetail(di, x => { const { a: _a, ...rest } = x; return a === 'spike' ? rest : { ...rest, a: a as AttackType }; }),
+      }))
+    : [];
+  function setDetail(i: number, f: (t: Touch) => Touch) {
+    if (!rally) return;
+    onChange(saved.map((x, j) => (j === i ? f(x) : x)), rally.end);
+  }
+
   // laptop shortcuts
-  const keys = useRef({ addTouch, undo, finish, onSkip, togglePlay, onPrev, onNext, sorted, touches, sug, pickSkill });
-  keys.current = { addTouch, undo, finish, onSkip, togglePlay, onPrev, onNext, sorted, touches, sug, pickSkill };
+  const keys = useRef({ addTouch, undo, finish, onSkip, togglePlay, onPrev, onNext, sorted, touches, sug, pickSkill, detailOpts });
+  keys.current = { addTouch, undo, finish, onSkip, togglePlay, onPrev, onNext, sorted, touches, sug, pickSkill, detailOpts };
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement).tagName === 'INPUT') return;
@@ -152,6 +172,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
         pi >= 0 && c.sorted[pi] ? () => c.addTouch(c.sorted[pi].id)
         : key === 'g' ? () => c.addTouch('guest')
         : SKILL_KEYS_KB[key] ? () => c.pickSkill(SKILL_KEYS_KB[key])
+        : DETAIL_KEYS.includes(key) && c.detailOpts.length ? c.detailOpts[DETAIL_KEYS.indexOf(key)].set
         : key === ' ' ? c.togglePlay
         : key === 'z' ? c.undo
         : key === 'p' && last >= 0 ? () => c.finish(last, 'point')
@@ -195,7 +216,8 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
               {touches.map((t, i) => (
                 <button key={i} onClick={() => setSel(sel === i ? null : i)} title="Tap to change or delete this touch"
                   className={`rounded-md px-1.5 py-0.5 ${sel === i ? 'ring-2 ring-ball' : ''} ${doubled === i ? 'outline outline-1 outline-bad' : ''} ${pre ? 'border border-dashed border-ball/60' : ''} ${rally.end?.i === i ? (rally.end.r === 'point' ? 'bg-good/20 text-good' : 'bg-bad/20 text-bad') : 'bg-raised'}`}>
-                  {name(t.p)} <span className="text-muted">{SKILLS[t.k]}</span>
+                  {name(t.p)} <span className="text-muted">{t.k === 'attack' && t.a ? ATTACK_TYPES[t.a] : SKILLS[t.k]}</span>
+                  {t.q && <span className="ml-0.5 rounded bg-surface px-1 text-[10px] font-semibold">{t.q}</span>}
                 </button>
               ))}
               {saved.length > 0 && <button className="ml-1 text-muted underline" onClick={undo}>undo<Kbd k="Z" /></button>}
@@ -238,7 +260,20 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
             </button>
           )}
           {!blocked && <>
-          <div className="grid grid-cols-7 gap-1 lg:grid-cols-4 xl:grid-cols-7">
+          {detailOpts.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="shrink-0 text-[11px] text-muted">
+                {name(dt!.p)}'s {SKILLS[dt!.k].toLowerCase()}{GRADED.includes(dt!.k) ? ' (optional)' : ''}
+              </span>
+              {detailOpts.map((o, i) => (
+                <button key={o.label} onClick={o.set}
+                  className={`min-w-0 flex-1 truncate rounded-md border px-1 py-1 text-[11px] font-semibold ${o.on ? 'border-court bg-court/25 text-ink' : 'border-line text-muted'}`}>
+                  {o.label}<Kbd k={DETAIL_KEYS[i].toUpperCase()} />
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="grid grid-cols-4 gap-1 sm:grid-cols-8 lg:grid-cols-4 xl:grid-cols-8">
             {SKILL_KEYS.map(s => (
               <button key={s} onClick={() => pickSkill(s)}
                 className={`rounded-md border py-1 text-[11px] font-semibold ${s === k ? 'border-ball bg-ball text-bg' : 'border-line text-muted'}`}>
@@ -795,14 +830,17 @@ const BOX: [string, string, (c: C) => number | string][] = [
   ['AE', 'Attack errors', c => c.aerr],
   ['BLKD', 'Times blocked', c => c.blocked],
   ['HIT', 'Hitting efficiency', hit],
+  ['FB', 'Free balls sent over', c => c.free],
   ['SET', 'Sets', c => c.set],
   ['A', 'Assists', c => c.assist],
+  ['SQ', 'Set quality: average grade (good 3, OK 2, poor 1)', c => avgGrade(c.set3, c.set2, c.set1)],
   ['SA', 'Aces', c => c.ace],
   ['SV', 'Serves', c => c.serve],
   ['SE', 'Serve errors', c => c.serr],
   ['REC', 'Receives', c => c.receive],
   ['RE', 'Reception errors', c => c.rerr],
   ['DIG', 'Digs', c => c.dig],
+  ['PASS', 'Pass rating: average grade of receives + digs (perfect 3, OK 2, poor 1)', c => avgGrade(c.pass3, c.pass2, c.pass1)],
   ['BLK', 'Block touches', c => c.block],
   ['BS', 'Block points', c => c.blockpt],
   ['ERR', 'All errors', c => c.serr + c.aerr + c.rerr + c.oerr],
@@ -849,8 +887,9 @@ function BoxScore({ game, players }: { game: Game; players: Player[] }) {
         </tbody>
       </table>
       <p className="px-3 py-2 text-[11px] leading-relaxed text-muted">
-        PTS points · K kills · ATT attacks · AE attack errors · BLKD times blocked · HIT hitting efficiency · SET sets · A assists ·
-        SA aces · SV serves · SE serve errors · REC receives · RE reception errors · DIG digs · BLK block touches · BS block points · ERR all errors
+        PTS points · K kills · ATT attacks · AE attack errors · BLKD times blocked · HIT hitting efficiency · FB free balls · SET sets · A assists ·
+        SQ set quality (1–3) · SA aces · SV serves · SE serve errors · REC receives · RE reception errors · DIG digs · PASS pass rating (1–3) ·
+        BLK block touches · BS block points · ERR all errors
       </p>
     </div>
   );
