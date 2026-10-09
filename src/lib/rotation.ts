@@ -186,6 +186,16 @@ export function makeServer(c: CourtState, p: string): CourtState {
   return c;
 }
 
+/**
+ * After a hand-made rotation or a change of serving team: the libero and middles (and a six-player team's
+ * back-court player) go where the rules put them, the same as after an automatic rotation.
+ */
+export const placeSpecialists = (c: CourtState): CourtState => ({
+  ...c,
+  a: liberoRule(backCourtSwap(c.a), c.serving === 'a'),
+  b: liberoRule(backCourtSwap(c.b), c.serving === 'b'),
+});
+
 /** The court at the first rally: middles and libero placed for who serves first. */
 export const startCourt = (c: CourtSetup): CourtState => {
   const n = courtOnly(c);

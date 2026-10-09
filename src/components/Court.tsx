@@ -3,7 +3,7 @@
 // with the spots, so swapped players swap roles and a sub takes over the role of the player they replace.
 // "Keep roles" swaps instead move the players with their roles (for teams that stood in the wrong spots).
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { ROLE_NAMES, TEAMS, roleAt, rotate, rotateBack, rotationOf, type CourtState, type Side, type Team } from '../lib/rotation';
+import { ROLE_NAMES, TEAMS, placeSpecialists, roleAt, rotate, rotateBack, rotationOf, type CourtState, type Side, type Team } from '../lib/rotation';
 
 /** Role label at spot i, telling the two outside hitters apart (OH1 / OH2). */
 const roleLabel = (s: Side, i: number) => {
@@ -129,7 +129,8 @@ export function Court({ c, name, onChange, onSlot, target, allowEmpty = false, c
     </div>
   );
 
-  const setSide = (t: Team, s: Side) => onChange?.({ ...c, [t]: s });
+  // hand rotations follow the same libero / middle rules as automatic ones
+  const setSide = (t: Team, s: Side, what: string) => onChange?.(placeSpecialists({ ...c, [t]: s }), what);
 
   return (
     <div className="select-none">
@@ -164,13 +165,13 @@ export function Court({ c, name, onChange, onSlot, target, allowEmpty = false, c
           <span className="text-muted">Rotate</span>
           {TEAMS.map(t => (
             <div key={t} className="flex gap-1">
-              <button className="flex-1 rounded-md border border-line bg-raised py-1" onClick={() => setSide(t, rotate(c[t]))} title={`Rotate team ${t.toUpperCase()} (2 → 1)`}>↻ {t.toUpperCase()}</button>
-              <button className="rounded-md border border-line bg-raised px-1.5 py-1 text-muted" onClick={() => setSide(t, rotateBack(c[t]))} title="Undo a rotation">↺</button>
+              <button className="flex-1 rounded-md border border-line bg-raised py-1" onClick={() => setSide(t, rotate(c[t]), `rotated team ${t.toUpperCase()}`)} title={`Rotate team ${t.toUpperCase()} (2 → 1)`}>↻ {t.toUpperCase()}</button>
+              <button className="rounded-md border border-line bg-raised px-1.5 py-1 text-muted" onClick={() => setSide(t, rotateBack(c[t]), `rotated team ${t.toUpperCase()} back`)} title="Undo a rotation">↺</button>
             </div>
           ))}
           <span className="text-muted">Serving</span>
           {TEAMS.map(t => (
-            <button key={t} onClick={() => onChange?.({ ...c, serving: t })}
+            <button key={t} onClick={() => onChange?.(placeSpecialists({ ...c, serving: t }), `team ${t.toUpperCase()} serving`)}
               className={`rounded-md border py-1 ${c.serving === t ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>Team {t.toUpperCase()}</button>
           ))}
         </div>
