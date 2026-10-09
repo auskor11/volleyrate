@@ -37,13 +37,24 @@ Only six attributes can be measured from tagged touches. Setting and Receiving h
 | Setting | Set quality *(graded)* | (average grade of non-error sets − 1) ÷ 2 | 0.3 | 25 |
 | Receiving | Ball control | 1 − (receive + dig errors) ÷ (receives + digs) | 1.0 | 25 |
 | Receiving | Pass quality *(graded)* | (average grade of non-error receives + digs − 1) ÷ 2 | 0.3 | 25 |
-| Blocking | Block efficiency | (block points − block errors) ÷ block touches | 0.5 | 15 |
 | Consistency | Error rate | errors ÷ all touches (lower is better) | −1.5 | 25 |
 
 ```
 adjustment = rate × strength × (player metric − team benchmark) × 100 × n / (n + k × dataScale)
 attribute's stats adjustment = sum of its metrics' adjustments
 ```
+
+**Blocking works differently: a bonus that only goes up.** You're beginners, so blocking attempts shouldn't cost rating.
+
+```
+Blocking bonus = min(15, strength × (2 × block points + 0.5 × other block touches))
+```
+
+- **Block points** are blocks that won the rally, directly or by forcing a receive/dig error.
+- **Other block touches** are soft blocks and deflections that kept the rally going.
+- **Block errors** count 0.
+- **No team comparison and no confidence factor**, so dataScale doesn't apply. Recent sessions and each game's strength still weight the counts.
+- **Example** at strength 1.2: 1 block point + 5 other touches = 1.2 × (2 + 2.5) = **+5.4**. The bonus stops at **+15**.
 
 **Graded metrics:**
 - Grades are optional: passes 3 perfect / 2 OK / 1 poor, sets 3 good / 2 OK / 1 poor.

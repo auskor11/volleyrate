@@ -5,7 +5,7 @@ import { createPlayer, type YTPlayer } from '../lib/youtube';
 import { Link, useParams } from 'react-router-dom';
 import { AttrBar, PlayerCard } from '../components/PlayerCard';
 import { useRatedPlayers } from '../lib/rated';
-import { METRICS, experience, metricsFor, type RatingModel } from '../lib/engine';
+import { BLOCK_CREDIT, METRICS, experience, metricsFor, type RatingModel } from '../lib/engine';
 import { fmtTime, useGames } from '../lib/games';
 import { STAT_GROUPS, STAT_LABELS, avgGrade, computeStats, ratio, taggedGames, type StatKey } from '../lib/stats';
 import { CATEGORIES, POSITIONS, categoryScore, overall, type Position } from '../lib/ratings';
@@ -168,6 +168,10 @@ function Attr({ k, label, p, model }: { k: string; label: string; p: { id: strin
           {ms.map(mk => {
             const a = model.adj[p.id]?.[mk], m = METRICS[mk];
             if (!a) return m.graded ? null : <span key={mk}> · no tagged {m.label.toLowerCase()} data yet</span>;
+            if (a.block) return (
+              <span key={mk}> + {num(a.delta)} block credit ({a.block.points} block point{a.block.points === 1 ? '' : 's'}, {a.block.touches - a.block.points - a.block.errors} other
+                block touch{a.block.touches - a.block.points - a.block.errors === 1 ? '' : 'es'}{a.delta >= BLOCK_CREDIT.cap - 0.01 ? ', at the +15 max' : ''})</span>
+            );
             return (
               <span key={mk}> {a.delta >= 0 ? '+' : '−'} {num(Math.abs(a.delta))} {m.label.toLowerCase()} {pct(a.rawValue)}
                 {pct(a.value) !== pct(a.rawValue) && <span title="Counted after weighting recent sessions more and applying each game's strength"> ({pct(a.value)} weighted)</span>}

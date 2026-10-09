@@ -7,6 +7,8 @@
 //   so everyone's ratings can rise as the team improves. Graded metrics (pass / set quality) start
 //   later, so they count from the first sessions holding 5 games with grades.
 // - Setting and Receiving each have two metrics; their adjustments add up.
+// - Blocking is different: a bonus that only grows (beginners shouldn't lose rating for going up to
+//   block). strength × (2 per block point + 0.5 per other block touch), errors 0, at most +15.
 // - Recent sessions count more: a session's weight halves every 8 sessions (all games on one date equal).
 // - Only rallies tagged touch-by-touch (with a result) count; quick point tags lack attempt counts.
 // - No caps beyond the 0–99 scale.
@@ -39,10 +41,15 @@ export const METRICS = {
   setQuality: { attr: 'setting', label: 'Set quality', rate: 0.3, k: 25, graded: true, what: 'average grade of sets that weren\'t errors (good 3, OK 2, poor 1)' },
   receiving: { attr: 'receiving', label: 'Ball control', rate: 1.0, k: 25, graded: false, what: 'receives + digs without an error ÷ receives + digs' },
   passQuality: { attr: 'receiving', label: 'Pass quality', rate: 0.3, k: 25, graded: true, what: 'average grade of receives + digs that weren\'t errors (perfect 3, OK 2, poor 1)' },
-  blocking: { attr: 'blocking', label: 'Block efficiency', rate: 0.5, k: 15, graded: false, what: '(block points − block errors) ÷ block touches' },
+  blocking: { attr: 'blocking', label: 'Block credit', rate: 0.5, k: 15, graded: false, what: '2 per block point + 0.5 per other block touch (errors 0), × strength, max +15' },
   consistency: { attr: 'consistency', label: 'Error rate', rate: -1.5, k: 25, graded: false, what: 'errors ÷ all touches (lower is better)' },
 } as const;
 export type MetricKey = keyof typeof METRICS;
+/** Blocking bonus (no team comparison, never negative). */
+export const BLOCK_CREDIT = { perPoint: 2, perTouch: 0.5, cap: 15 };
+const blockCredit = (c: Counts) =>
+  BLOCK_CREDIT.perPoint * c.blockPts + BLOCK_CREDIT.perTouch * Math.max(0, c.blocks - c.blockPts - c.blockErr);
+
 /** Metrics that adjust an attribute (Setting and Receiving have two). */
 export const metricsFor = (attr: string) => (Object.keys(METRICS) as MetricKey[]).filter(m => METRICS[m].attr === attr);
 
@@ -130,6 +137,7 @@ export interface Adjustment {
   attempts: number;     // recency-weighted attempts
   rawAttempts: number;  // unweighted attempts
   weight: number;       // attempts / (attempts + k)
+  block?: { points: number; errors: number; touches: number };  // blocking only: raw counts behind the bonus
 }
 
 export interface RatingModel {
@@ -199,6 +207,16 @@ export function buildModel(
   for (const [p, c] of Object.entries(weighted)) {
     for (const k of Object.keys(METRICS) as MetricKey[]) {
       const [v, n] = metric(k, c);
+      if (k === 'blocking') {  // bonus only: weighted credit × strength, capped
+        if (!(c.blocks > 0)) continue;
+        const r = raw[p];
+        (adj[p] ??= {}).blocking = {
+          delta: Math.min(BLOCK_CREDIT.cap, settings.strength * blockCredit(c)),
+          value: blockCredit(c), rawValue: blockCredit(r), bench: 0, attempts: c.blocks, rawAttempts: r.blocks, weight: 1,
+          block: { points: r.blockPts, errors: r.blockErr, touches: r.blocks },
+        };
+        continue;
+      }
       const b = bench[k];
       if (!(n > 0) || b === undefined) continue;
       const weight = n / (n + METRICS[k].k * settings.dataScale);
