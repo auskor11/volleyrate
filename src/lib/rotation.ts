@@ -10,9 +10,12 @@
 // role of the player they replace.
 //
 // After each rally: if the serving team won, nothing moves. Otherwise the other team wins the serve and
-// rotates clockwise (2 → 1, 3 → 2 … 1 → 6), and its new position-1 player serves. The extra middle
-// blocker (a sub marked as such) comes on for the libero when the libero's spot reaches the front row
-// (5 → 4), serves when it gets to 1, and the libero comes back on as it moves to the back row (1 → 6).
+// rotates clockwise (2 → 1, 3 → 2 … 1 → 6), and its new position-1 player serves.
+//
+// Libero (teams with an extra middle blocker on the bench): the two middle spots (MB and L) are opposite
+// each other, so one is always in the back row. The libero plays for whichever middle is in the back
+// row, except that the middle serves: when the back-row middle rotates to position 1 the libero comes
+// off, and as soon as the team loses that serve the libero comes back on for him.
 // A team of six with no subs has no libero: that spot plays middle. If it has a libero-type player
 // (Darius) who doesn't play front court, he swaps with the other middle each time he rotates into the
 // front row; if he does play front court, the rotation carries on as usual and he's shown as L/MB.
@@ -37,11 +40,12 @@ export const rotationOf = (roles: Position[]): number =>
 
 /**
  * One team. pos[0] = position 1 … pos[5] = position 6 ('' = nobody yet); roles[i] = role of the spot at
- * pos[i] (rotates with it); bench = subs, longest waiting first; mb = the sub who is the extra middle
- * blocker; libero = who to bring back when the extra middle goes off.
+ * pos[i] (rotates with it); bench = subs, longest waiting first. mb = the extra middle blocker (a sub)
+ * and lib = the libero, set up by the reviewer; mid = the middles who own the MB and L spots, worked out
+ * at the first rally so the libero can stand in for whichever is in the back row.
  */
 export interface Side {
-  pos: string[]; roles: Position[]; bench: string[]; mb?: string; libero?: string;
+  pos: string[]; roles: Position[]; bench: string[]; mb?: string; lib?: string; mid?: [string, string];
   l6?: string;        // six-player team: its libero-type player ('' = none)
   l6front?: boolean;  // …who plays front court too (otherwise he swaps with the other middle at the front row)
 }
@@ -62,8 +66,10 @@ const norm = (c: CourtState): CourtState => ({ ...c, a: normSide(c.a), b: normSi
 export function roleAt(s: Side, i: number): string {
   const p = s.pos[i];
   if (p && s.l6 && p === s.l6) return s.l6front ? 'L/MB' : 'L';
+  const middle = s.roles[i] === 'MB' || s.roles[i] === 'L';
+  if (middle && s.mid) return p === s.lib ? 'L' : 'MB';  // libero system: whoever stands in a middle spot
   if (s.roles[i] !== 'L') return s.roles[i];
-  if (p && p === s.mb) return 'MB';           // extra middle standing in for the libero
+  if (p && p === s.mb) return 'MB';
   return s.bench.length ? 'L' : 'MB';         // six players, no subs: no libero
 }
 
@@ -124,20 +130,51 @@ function backCourtSwap(s: Side): Side {
   return { ...s, pos: s.pos.map((p, k) => (k === i ? s.pos[j] : k === j ? s.pos[i] : p)) };
 }
 
-/** After a rotation: the extra middle and the libero trade places at the front-row and back-row lines. */
-function liberoSwap(s: Side): Side {
-  const i = s.roles.indexOf('L');
-  if (i < 0 || !s.mb) return s;
-  const swapIn = (on: string, off: string, extra: Partial<Side>): Side => ({
-    ...s, ...extra,
-    pos: s.pos.map((p, j) => (j === i ? on : p)),
-    bench: [...dropOne(s.bench, on), off],
-  });
-  // libero's spot just moved 5 → 4 (front row): the extra middle comes on
-  if (i === 3 && s.pos[i] !== s.mb && s.bench.includes(s.mb)) return swapIn(s.mb, s.pos[i], { libero: s.pos[i] });
-  // …and just moved 1 → 6 (back row, after serving): the libero comes back on
-  if (i === 5 && s.pos[i] === s.mb && s.libero && s.bench.includes(s.libero)) return swapIn(s.libero, s.mb, {});
-  return s;
+/**
+ * Put the libero in for the back-row middle, and the middles in the front row or serving. `serving` =
+ * this team serves the next rally. Leaves the court alone if the reviewer has subbed someone else in.
+ */
+function liberoRule(s: Side, serving: boolean): Side {
+  if (!s.mid || !s.lib) return s;
+  const spots = [s.roles.indexOf('MB'), s.roles.indexOf('L')];
+  if (spots.some(i => i < 0)) return s;
+  const trio = [s.mid[0], s.mid[1], s.lib];
+  // the two on court in the middle spots and the one on the bench must be exactly these three
+  const now = spots.map(i => s.pos[i]);
+  let rest = [...trio];
+  for (const p of now) { const k = rest.indexOf(p); if (k < 0) return s; rest = [...rest.slice(0, k), ...rest.slice(k + 1)]; }
+  const off = rest[0];
+  if (!s.bench.includes(off)) return s;
+  const want = spots.map((i, k) => (i >= 1 && i <= 3) || (i === 0 && serving) ? s.mid![k] : s.lib!);
+  let left = [...trio];
+  for (const p of want) { const k = left.indexOf(p); left = [...left.slice(0, k), ...left.slice(k + 1)]; }
+  const newOff = left[0];
+  if (newOff === off) return s;
+  return {
+    ...s,
+    pos: s.pos.map((p, i) => (i === spots[0] ? want[0] : i === spots[1] ? want[1] : p)),
+    bench: [...dropOne(s.bench, off), newOff],
+  };
+}
+
+/**
+ * At the first rally: work out which middle owns which middle spot. The setup has the libero and one
+ * middle in the two middle spots (the other middle on the bench), or both middles on court.
+ */
+function withMiddles(s: Side): Side {
+  const { mid: _m, ...base } = s;
+  if (!s.mb) return base;
+  const iM = s.roles.indexOf('MB'), iL = s.roles.indexOf('L');
+  if (iM < 0 || iL < 0) return base;
+  const lib = s.lib ?? (s.pos[iL] !== s.mb ? s.pos[iL] : undefined);
+  if (!lib) return base;
+  const oM = s.pos[iM], oL = s.pos[iL];
+  const mid: [string, string] | null =
+    s.bench.includes(lib) && oM !== lib && oL !== lib ? [oM, oL]
+    : oL === lib && s.bench.includes(s.mb) ? [oM, s.mb]
+    : oM === lib && s.bench.includes(s.mb) ? [s.mb, oL]
+    : null;
+  return mid ? { ...base, lib, mid } : base;
 }
 
 /** Put player p at position 1 of their team (keeping everyone's order) and make that team serve. */
@@ -149,19 +186,11 @@ export function makeServer(c: CourtState, p: string): CourtState {
   return c;
 }
 
-/**
- * Setups list the libero in the libero's spot. If that spot is in the front row or serving (positions
- * 4, 3, 2, 1), the extra middle is the one on court there.
- */
-function startSide(s0: Side): Side {
-  const s = backCourtSwap(s0);
-  const i = s.roles.indexOf('L');
-  if (i < 0 || i > 3 || !s.mb || !s.bench.includes(s.mb) || !s.pos[i] || s.pos[i] === s.mb) return s;
-  return { ...s, libero: s.pos[i], pos: s.pos.map((p, j) => (j === i ? s.mb! : p)), bench: [...dropOne(s.bench, s.mb), s.pos[i]] };
-}
+/** The court at the first rally: middles and libero placed for who serves first. */
 export const startCourt = (c: CourtSetup): CourtState => {
   const n = courtOnly(c);
-  return { ...n, a: startSide(n.a), b: startSide(n.b) };
+  const side = (t: Team) => liberoRule(withMiddles(backCourtSwap(n[t])), n.serving === t);
+  return { ...n, a: side('a'), b: side('b') };
 };
 
 /** The court after rally r, and who won it. */
@@ -172,7 +201,12 @@ function advance(c: CourtState, r: Rally): { next: CourtState; winner: Team | nu
   if (sv?.k === 'serve' && sv.p !== 'guest' && sv.p !== server(c)) cur = makeServer(c, sv.p);
   const winner = rallyWinner(cur, r);
   if (!winner || winner === cur.serving) return { next: cur, winner };
-  return { next: { ...cur, [winner]: backCourtSwap(liberoSwap(rotate(cur[winner]))), serving: winner }, winner };
+  // side-out: the winners rotate and serve; the team that lost its serve gets its libero back
+  const loser = other(winner);
+  return {
+    next: { ...cur, [winner]: liberoRule(backCourtSwap(rotate(cur[winner])), true), [loser]: liberoRule(cur[loser], false), serving: winner },
+    winner,
+  };
 }
 
 export interface ScoreRow { before: { a: number; b: number }; after: { a: number; b: number }; winner: Team | null }
@@ -185,7 +219,8 @@ export function scoreSheet(setup: CourtSetup, rallies: Rally[]): ScoreRow[] {
   let state = startCourt(setup);
   const sc = { a: setup.score?.a ?? 0, b: setup.score?.b ?? 0 };
   return rallies.map(r => {
-    const cur = handSet(r) ? courtOnly(r.court!) : state;
+    const h = handSet(r);
+    const cur = h ? withDetails(h, state) : state;
     const { next, winner } = advance(cur, r);
     const before = { ...sc };
     if (winner) sc[winner]++;
@@ -209,21 +244,33 @@ export interface CourtView {
 
 const handSet = (r?: Rally) => (r?.court?.manual ? r.court : undefined);
 
+/**
+ * A hand-set court, keeping the team details it doesn't record itself (courts saved before those details
+ * existed): the extra middle, libero, middles and back-court player carry on from the worked-out court.
+ */
+function withDetails(hand: CourtState, from: CourtState): CourtState {
+  const side = (t: Team): Side => {
+    const h = normSide(hand[t]), f = from[t];
+    return { ...h, ...(h.mb === undefined && f.mb ? { mb: f.mb } : {}), ...(h.lib === undefined && f.lib ? { lib: f.lib } : {}),
+      ...(h.mid === undefined && f.mid ? { mid: f.mid } : {}), ...(h.l6 === undefined && f.l6 !== undefined ? { l6: f.l6, ...(f.l6front ? { l6front: true } : {}) } : {}) };
+  };
+  return { a: side('a'), b: side('b'), serving: hand.serving };
+}
+
 /** The court for rallies[at] (the live rallies of a game, in time order). */
 export function courtFor(setup: CourtSetup, rallies: Rally[], at: number): CourtView {
-  let k = at - 1;
-  while (k >= 0 && !handSet(rallies[k])) k--;
-  let state: CourtState = k >= 0 ? courtOnly(rallies[k].court!) : startCourt(setup);
+  let state: CourtState = startCourt(setup);
   let lastWinner: Team | null = null;
-  for (let i = Math.max(k, 0); i < at; i++) {
-    const step = advance(state, rallies[i]);
+  for (let i = 0; i < at; i++) {
+    const h = handSet(rallies[i]);
+    const step = advance(h ? withDetails(h, state) : state, rallies[i]);
     state = step.next;
     lastWinner = step.winner;
   }
   const sv = handSet(rallies[at]);
-  const saved = sv && { ...courtOnly(sv), manual: true };
+  const saved = sv && { ...withDetails(sv, state), manual: true };
   return {
-    state: saved ?? state, derived: state, saved: !!saved, manual: !!saved?.manual,
+    state: saved ?? state, derived: state, saved: !!saved, manual: !!saved,
     mismatch: !!saved && !sameCourt(saved, state), first: at === 0, lastWinner,
   };
 }

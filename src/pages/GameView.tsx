@@ -1185,8 +1185,14 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
   // the extra middle must be on the bench; nobody starts subbed in for the libero
   const tidy = (x: CourtSetup): CourtSetup => {
     const fix = (sd: CourtSetup['a']) => {
-      const { mb, libero: _l, l6, l6front, ...rest } = sd;
-      if (sd.bench.length) return mb && sd.bench.includes(mb) ? { ...rest, mb } : rest;
+      const { mb, lib, mid: _m, l6, l6front, ...rest } = sd;
+      if (sd.bench.length) {
+        if (!mb || !sd.bench.includes(mb)) return rest;
+        // the libero: chosen, or whoever stands in the L spot
+        const iL = sd.roles.indexOf('L');
+        const l = lib && lib !== mb && (sd.pos.includes(lib) || sd.bench.includes(lib)) ? lib : sd.pos[iL] && sd.pos[iL] !== mb ? sd.pos[iL] : '';
+        return { ...rest, mb, ...(l ? { lib: l } : {}) };
+      }
       if (!sd.pos.every(Boolean)) return rest;  // decide once all six are placed
       // six players, no subs: pick the libero-type player (Darius by default) if he's on the team
       const pick = l6 !== undefined && (l6 === '' || sd.pos.includes(l6)) ? l6
@@ -1318,7 +1324,7 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
             )}
             {TEAMS.some(t => c[t].bench.length > 0) && (
               <div className="space-y-1.5">
-                <p className="text-xs text-muted">Extra middle blocker (comes on for the libero in the front row automatically)</p>
+                <p className="text-xs text-muted">Extra middle blocker (then the team plays with a libero)</p>
                 {TEAMS.filter(t => c[t].bench.length).map(t => (
                   <div key={t} className="flex flex-wrap items-center gap-1.5 text-xs">
                     <span className="w-14 text-muted">Team {t.toUpperCase()}</span>
@@ -1331,13 +1337,30 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
                     <span className="text-muted">{c[t].mb ? '' : 'none'}</span>
                   </div>
                 ))}
-                {TEAMS.map(t => {
-                  const i = c[t].roles.indexOf('L');
-                  return c[t].mb && i <= 3 && c[t].pos[i] ? (
-                    <p key={t} className="text-[11px] text-ball">
-                      Team {t.toUpperCase()}: the libero's spot is at position {i + 1}, so {name(c[t].mb!)} plays there and {name(c[t].pos[i])} starts on the bench.
-                    </p>
-                  ) : null;
+                {TEAMS.filter(t => c[t].mb).map(t => {
+                  const start = startCourt(c)[t];
+                  const benched = start.mid && start.lib ? [start.mid[0], start.mid[1], start.lib].find(p => start.bench.includes(p)) : undefined;
+                  return (
+                    <div key={t} className="space-y-1 text-xs">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="w-14 text-muted">Team {t.toUpperCase()}</span>
+                        <span className="text-muted">Libero</span>
+                        <select value={c[t].lib ?? ''} onChange={e => setC(x => tidy({ ...x, [t]: { ...x[t], lib: e.target.value } }))}
+                          className="rounded-md border border-line bg-raised px-1.5 py-1 text-ink outline-none">
+                          {[...new Set([...c[t].pos, ...c[t].bench])].filter(p => p && p !== c[t].mb).map(p => <option key={p} value={p}>{name(p)}</option>)}
+                        </select>
+                      </div>
+                      {start.mid ? (
+                        <p className="text-[11px] text-muted">
+                          {name(start.lib!)} plays for whichever middle ({name(start.mid[0])} or {name(start.mid[1])}) is in the back row. The middle
+                          serves, and the libero comes back on when the team loses that serve.
+                          {benched && <> At the first rally, <b className="text-ink">{name(benched)}</b> starts on the bench.</>}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-ball">Put the libero (or the other middle) in one of the two middle spots so the app knows who's who.</p>
+                      )}
+                    </div>
+                  );
                 })}
                 <p className="text-[11px] text-muted">Other subs: drag them in while tagging.</p>
               </div>
