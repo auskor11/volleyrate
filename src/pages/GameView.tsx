@@ -1161,14 +1161,22 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
   const tTeam = target.split('.')[0] as Team;
   const tSpot = target.split('.')[1] === 'pos' ? Number(target.split('.')[2]) : -1;
   const tPlayer = tSpot >= 0 ? c[tTeam].pos[tSpot] : '';
+  const tSub = target.split('.')[1] === 'bench' && target.split('.')[2] !== 'end' ? Number(target.split('.')[2]) : -1;
+  const tSubPlayer = tSub >= 0 ? c[tTeam].bench[tSub] ?? '' : '';
 
   const place = (id: string) => {
     const t = tTeam;
     const n: CourtSetup = { ...c, [t]: { ...c[t], pos: [...c[t].pos], bench: [...c[t].bench] } };
     if (tSpot >= 0) n[t].pos[tSpot] = id;
+    else if (tSubPlayer) n[t].bench[tSub] = id;
     else n[t].bench.push(id);
     setC(tidy(n));
-    setTarget(nextSpot(n, t));
+    setTarget(tSubPlayer ? `${t}.bench.end` : nextSpot(n, t));
+  };
+  const removeSub = () => {
+    if (!tSubPlayer) return;
+    setC(tidy({ ...c, [tTeam]: { ...c[tTeam], bench: c[tTeam].bench.filter((_, i) => i !== tSub) } }));
+    setTarget(`${tTeam}.bench.end`);
   };
   const clearSpot = () => {
     if (tSpot < 0) return;
@@ -1220,8 +1228,10 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
             <div className="rounded-lg bg-raised px-3 py-2 text-sm">
               {tSpot >= 0
                 ? <>Team <b>{tTeam.toUpperCase()}</b>, position <b>{tSpot + 1}</b> ({POS_NAMES[tSpot]}): {tPlayer ? <>now <b>{name(tPlayer)}</b>, tap someone to replace</> : 'tap who stands there'}</>
-                : <>Team <b>{tTeam.toUpperCase()}</b> subs: tap players to add them</>}
+                : tSubPlayer ? <>Team <b>{tTeam.toUpperCase()}</b> sub <b>{name(tSubPlayer)}</b>: tap someone to replace, or</>
+                : <>Team <b>{tTeam.toUpperCase()}</b> subs: tap players to add them (tap a sub on the left to change or remove it)</>}
               {tPlayer && <button className="ml-2 text-xs text-bad underline" onClick={clearSpot}>clear</button>}
+              {tSubPlayer && <button className="ml-2 rounded-md border border-bad/50 px-2 py-0.5 text-xs text-bad" onClick={removeSub}>Remove from subs</button>}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {players.filter(p => !used.has(p.id)).map(p => <button key={p.id} className={chip} onClick={() => place(p.id)}>{p.name}</button>)}
@@ -1312,7 +1322,7 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
                 {TEAMS.filter(t => c[t].bench.length).map(t => (
                   <div key={t} className="flex flex-wrap items-center gap-1.5 text-xs">
                     <span className="w-14 text-muted">Team {t.toUpperCase()}</span>
-                    {c[t].bench.filter(p => p !== 'guest').map(p => (
+                    {[...new Set(c[t].bench)].map(p => (
                       <button key={p} onClick={() => setMb(t, c[t].mb === p ? null : p)}
                         className={`rounded-md border px-2 py-1 ${c[t].mb === p ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>
                         {name(p)}{c[t].mb === p ? ' · MB' : ''}

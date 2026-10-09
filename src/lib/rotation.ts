@@ -107,6 +107,9 @@ export function rallyWinner(c: CourtState, r: Rally): Team | null {
   return r.end.r === 'point' ? t : other(t);
 }
 
+/** The bench without one occurrence of p (several guests can sit on a bench). */
+const dropOne = (bench: string[], p: string) => { const i = bench.indexOf(p); return i < 0 ? bench : [...bench.slice(0, i), ...bench.slice(i + 1)]; };
+
 const turn = <T,>(xs: T[], back = false): T[] => (back ? [xs[5], ...xs.slice(0, 5)] : [...xs.slice(1), xs[0]]);
 /** Clockwise: the player at 2 moves to 1, 3 to 2 … 1 to 6 (each spot keeps its role). */
 export const rotate = (s: Side): Side => ({ ...s, pos: turn(s.pos), roles: turn(s.roles) });
@@ -128,7 +131,7 @@ function liberoSwap(s: Side): Side {
   const swapIn = (on: string, off: string, extra: Partial<Side>): Side => ({
     ...s, ...extra,
     pos: s.pos.map((p, j) => (j === i ? on : p)),
-    bench: [...s.bench.filter(b => b !== on), off],
+    bench: [...dropOne(s.bench, on), off],
   });
   // libero's spot just moved 5 → 4 (front row): the extra middle comes on
   if (i === 3 && s.pos[i] !== s.mb && s.bench.includes(s.mb)) return swapIn(s.mb, s.pos[i], { libero: s.pos[i] });
@@ -154,7 +157,7 @@ function startSide(s0: Side): Side {
   const s = backCourtSwap(s0);
   const i = s.roles.indexOf('L');
   if (i < 0 || i > 3 || !s.mb || !s.bench.includes(s.mb) || !s.pos[i] || s.pos[i] === s.mb) return s;
-  return { ...s, libero: s.pos[i], pos: s.pos.map((p, j) => (j === i ? s.mb! : p)), bench: [...s.bench.filter(b => b !== s.mb), s.pos[i]] };
+  return { ...s, libero: s.pos[i], pos: s.pos.map((p, j) => (j === i ? s.mb! : p)), bench: [...dropOne(s.bench, s.mb), s.pos[i]] };
 }
 export const startCourt = (c: CourtSetup): CourtState => {
   const n = courtOnly(c);
