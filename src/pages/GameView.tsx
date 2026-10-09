@@ -261,9 +261,9 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
           )}
           {!blocked && <>
           {detailOpts.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <span className="shrink-0 text-[11px] text-muted">
-                {name(dt!.p)}'s {SKILLS[dt!.k].toLowerCase()}{GRADED.includes(dt!.k) ? ' (optional)' : ''}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="w-full text-[11px] text-muted">
+                {name(dt!.p)}'s {SKILLS[dt!.k].toLowerCase()}{GRADED.includes(dt!.k) ? ' (optional grade)' : ''}
               </span>
               {detailOpts.map((o, i) => (
                 <button key={o.label} onClick={o.set}
@@ -613,7 +613,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   // Fills the screen: phone = video on top + list scrolling below; wide screen = video left, list right.
   return (
     <div className={`flex h-[calc(100dvh-11.5rem-env(safe-area-inset-top))] flex-col gap-3 lg:grid lg:gap-5 ${mode === 'tag'
-      ? 'lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,1fr)_minmax(250px,0.8fr)]' : 'lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]'}`}>
+      ? 'lg:grid-cols-[minmax(0,1.9fr)_minmax(280px,1fr)_minmax(230px,0.75fr)]' : 'lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]'}`}>
       <div className={`shrink-0 space-y-2 ${mode === 'tag' ? 'lg:flex lg:min-h-0 lg:flex-col lg:gap-2 lg:space-y-0 lg:overflow-y-auto' : 'lg:overflow-y-auto'}`}>
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
@@ -661,7 +661,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
         ) : mode === 'tag' ? (
           <>
             <p className="hidden text-xs text-muted lg:block">Tag while it plays: tap names (or press 1–9, 0, G) as each touch happens. Space = play/pause.</p>
-            {rallyList(listEl2, 'hidden min-h-[10.75rem] flex-1 lg:block', true)}
+            {rallyList(listEl2, 'hidden min-h-[8.125rem] flex-1 lg:block', true)}
           </>
         ) : (
           <div className="space-y-2">
