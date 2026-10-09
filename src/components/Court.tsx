@@ -1,0 +1,161 @@
+// Volleyball court with both teams' rotations: Team A on the top half, Team B on the bottom, net in the
+// middle, subs on the left. Drag a name onto another to swap them (or tap one, then the other).
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import type { Position } from '../lib/ratings';
+import { TEAMS, rotate, rotateBack, type CourtState, type Side, type Team } from '../lib/rotation';
+
+// slot keys: "a.pos.0" (team A, position 1), "b.bench.2", "a.bench.end" (drop zone at the end of the bench)
+type Where = { t: Team; list: 'pos' | 'bench'; i: number };
+const parse = (k: string): Where => {
+  const [t, list, i] = k.split('.');
+  return { t: t as Team, list: list as Where['list'], i: i === 'end' ? -1 : Number(i) };
+};
+const get = (c: CourtState, w: Where) => (w.i < 0 ? '' : c[w.t][w.list][w.i] ?? '');
+
+// screen spots (left %, top %) of positions 1–6; Team A faces down, so its right is the viewer's left
+const SPOTS: Record<Team, [number, number][]> = {
+  a: [[17, 13], [17, 38], [50, 38], [83, 38], [83, 13], [50, 13]],
+  b: [[83, 87], [83, 62], [50, 62], [17, 62], [17, 87], [50, 87]],
+};
+
+/** Swap the players at two slots (or move one to the end of a bench). */
+export function moveSlot(c: CourtState, from: string, to: string, allowEmpty: boolean): CourtState {
+  if (from === to) return c;
+  const a = parse(from), b = parse(to);
+  const pa = get(c, a), pb = get(c, b);
+  if (!pa && !pb) return c;
+  if (!allowEmpty && a.list === 'pos' !== (b.list === 'pos') && (!pa || !pb)) return c;  // keep six on court
+  const n: CourtState = { ...c, a: { pos: [...c.a.pos], bench: [...c.a.bench] }, b: { pos: [...c.b.pos], bench: [...c.b.bench] } };
+  const put = (w: Where, v: string) => {
+    if (w.i < 0) { if (v) n[w.t].bench.push(v); }
+    else n[w.t][w.list][w.i] = v;
+  };
+  put(a, pb);
+  put(b, pa);
+  for (const t of TEAMS) n[t].bench = n[t].bench.filter(Boolean);
+  return n;
+}
+
+const ROLE_SHORT: Record<Position, string> = { S: 'S', OH: 'OH', OPP: 'OPP', MB: 'MB', L: 'L' };
+
+export function Court({ c, name, roles, onChange, onSlot, target, allowEmpty = false, controls = false }: {
+  c: CourtState;
+  name: (id: string) => string;
+  roles: Record<string, Position>;
+  onChange?: (c: CourtState) => void;
+  onSlot?: (key: string) => void;   // setup: a tap picks the slot to fill instead of selecting it
+  target?: string | null;           // highlighted slot (setup: the next one to fill)
+  allowEmpty?: boolean;             // setup: spots may be empty
+  controls?: boolean;               // rotate buttons + serving team toggle
+}) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [ghost, setGhost] = useState<{ key: string; x: number; y: number } | null>(null);
+  const press = useRef<{ key: string; x: number; y: number; moved: boolean } | null>(null);
+  const editable = !!onChange;
+
+  const drop = (from: string, to: string) => {
+    const n = moveSlot(c, from, to, allowEmpty);
+    if (n !== c) onChange?.(n);
+  };
+  const down = (e: ReactPointerEvent, key: string) => {
+    if (!editable && !onSlot) return;
+    press.current = { key, x: e.clientX, y: e.clientY, moved: false };
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  };
+  const move = (e: ReactPointerEvent) => {
+    const p = press.current;
+    if (!p || !editable || !get(c, parse(p.key))) return;
+    if (!p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 6) return;
+    p.moved = true;
+    setGhost({ key: p.key, x: e.clientX, y: e.clientY });
+  };
+  const up = (e: ReactPointerEvent) => {
+    const p = press.current;
+    press.current = null;
+    setGhost(null);
+    if (!p) return;
+    if (p.moved) {
+      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-slot]') as HTMLElement | null;
+      if (el?.dataset.slot) drop(p.key, el.dataset.slot);
+      setSelected(null);
+      return;
+    }
+    if (onSlot) { onSlot(p.key); return; }
+    // tap one name, then another, to swap them
+    if (!selected) { if (get(c, parse(p.key))) setSelected(p.key); }
+    else { if (selected !== p.key) drop(selected, p.key); setSelected(null); }
+  };
+
+  const token = (key: string, id: string, label: string, extra = '') => {
+    const serving = key === `${c.serving}.pos.0`;
+    const hl = target === key || selected === key;
+    return (
+      <div key={key} data-slot={key}
+        onPointerDown={e => down(e, key)} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { press.current = null; setGhost(null); }}
+        className={`touch-none select-none rounded-md border px-1 py-0.5 text-center text-[11px] leading-tight ${extra}
+          ${hl ? 'border-court bg-court/25 ring-2 ring-court' : serving ? 'border-ball bg-ball/20 text-ball' : id ? 'border-line bg-raised' : 'border-dashed border-line text-muted'}
+          ${editable || onSlot ? 'cursor-pointer' : ''} ${ghost?.key === key ? 'opacity-40' : ''}`}>
+        <div className={`text-[9px] ${serving ? 'text-ball' : 'text-muted'}`}>{label}</div>
+        <div className="truncate font-semibold">{id ? name(id) : onSlot ? 'tap' : '—'}</div>
+        {id && id !== 'guest' && roles[id] && <div className="text-[9px] text-muted">{ROLE_SHORT[roles[id]]}</div>}
+      </div>
+    );
+  };
+
+  const bench = (t: Team) => (
+    <div className="flex min-h-0 flex-1 flex-col gap-1">
+      <div className="text-[10px] text-muted">{t.toUpperCase()} subs</div>
+      {c[t].bench.map((id, i) => token(`${t}.bench.${i}`, id, 'sub'))}
+      <div data-slot={`${t}.bench.end`} onPointerDown={e => down(e, `${t}.bench.end`)} onPointerUp={up}
+        className={`flex min-h-8 flex-1 items-center justify-center rounded-md border border-dashed text-center text-[10px] text-muted
+          ${target === `${t}.bench.end` ? 'border-court bg-court/20' : 'border-line'}`}>
+        {onSlot ? '+ sub' : ''}
+      </div>
+    </div>
+  );
+
+  const setSide = (t: Team, s: Side) => onChange?.({ ...c, [t]: s });
+
+  return (
+    <div className="select-none">
+      <div className="grid grid-cols-[3.75rem_minmax(0,1fr)] gap-1.5">
+        <div className="flex flex-col justify-between gap-3">
+          {bench('a')}
+          {bench('b')}
+        </div>
+        <div className="relative aspect-[5/8] w-full rounded-md border-2 border-ink/60 bg-court/10">
+          <div className="absolute inset-x-[-4px] top-1/2 border-t-[3px] border-ink" />
+          <div className="absolute inset-x-0 top-[25%] border-t border-dashed border-ink/25" />
+          <div className="absolute inset-x-0 top-[75%] border-t border-dashed border-ink/25" />
+          <span className="absolute right-1.5 top-1 text-[11px] font-semibold text-muted">A</span>
+          <span className="absolute bottom-1 right-1.5 text-[11px] font-semibold text-muted">B</span>
+          {TEAMS.flatMap(t => c[t].pos.map((id, i) => (
+            <div key={`${t}${i}`} className="absolute w-[31%] -translate-x-1/2 -translate-y-1/2" style={{ left: `${SPOTS[t][i][0]}%`, top: `${SPOTS[t][i][1]}%` }}>
+              {token(`${t}.pos.${i}`, id, i === 0 && t === c.serving ? '1 · 🏐 serve' : String(i + 1))}
+            </div>
+          )))}
+        </div>
+      </div>
+      {controls && editable && (
+        <div className="mt-1.5 grid grid-cols-[auto_1fr_1fr] items-center gap-1 text-xs">
+          <span className="text-muted">Rotate</span>
+          {TEAMS.map(t => (
+            <div key={t} className="flex gap-1">
+              <button className="flex-1 rounded-md border border-line bg-raised py-1" onClick={() => setSide(t, rotate(c[t]))} title={`Rotate team ${t.toUpperCase()} (2 → 1)`}>↻ {t.toUpperCase()}</button>
+              <button className="rounded-md border border-line bg-raised px-1.5 py-1 text-muted" onClick={() => setSide(t, rotateBack(c[t]))} title="Undo a rotation">↺</button>
+            </div>
+          ))}
+          <span className="text-muted">Serving</span>
+          {TEAMS.map(t => (
+            <button key={t} onClick={() => onChange?.({ ...c, serving: t })}
+              className={`rounded-md border py-1 ${c.serving === t ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>Team {t.toUpperCase()}</button>
+          ))}
+        </div>
+      )}
+      {ghost && (
+        <div className="pointer-events-none fixed z-[60] -translate-x-1/2 -translate-y-1/2 rounded-md border border-ball bg-raised px-2 py-1 text-xs font-semibold shadow-lg"
+          style={{ left: ghost.x, top: ghost.y }}>{name(get(c, parse(ghost.key)))}</div>
+      )}
+    </div>
+  );
+}

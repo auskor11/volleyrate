@@ -15,7 +15,11 @@ import { CATEGORIES, POSITIONS, overall, type Position } from '../lib/ratings';
 import { logHistory, setGameRating, useGames, useHistory } from '../lib/games';
 import { addHighlight, useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
-import { learnLineup, lineupReady, predictServer, rallyWinner, type Lineup, type ServerPrediction, type Team } from '../lib/rotation';
+import {
+  TEAMS, courtFor, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, server, setupReady,
+  type CourtSetup, type CourtState, type CourtView, type Team,
+} from '../lib/rotation';
+import { Court } from '../components/Court';
 
 const STATUS: Record<Rally['st'], { label: string; cls: string }> = {
   auto: { label: 'unchecked', cls: 'bg-line text-muted' },
@@ -73,7 +77,7 @@ function Kbd({ k }: { k: string }) {
   return <span className="ml-1 hidden rounded border border-line px-1 font-mono text-[10px] text-muted lg:inline">{k}</span>;
 }
 
-function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange, onDone, onPrev, onNext, hasPrev, hasNext, sug, onSkip, serve, wonBy, needTeams, onTeams }: {
+function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange, onDone, onPrev, onNext, hasPrev, hasNext, sug, onSkip, serve, onServer, wonBy, needTeams, onTeams }: {
   rally: Rally | undefined; players: Player[]; name: (id?: string) => string; now: () => number;
   playing: () => boolean; togglePlay: () => void;
   onChange: (touches: Touch[], end?: RallyEnd) => void; onDone: () => void;
@@ -81,7 +85,8 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   sug: { t: number; i: number; n: number } | null;  // suggested touch waiting to be tagged
   onSkip: () => void;
   // predicted server for an untagged rally (pre-selected), when the teams are set
-  serve: { pred: ServerPrediction; t: number; choices: string[] } | null;
+  serve: { p: string; t: number; why: string; choices: string[] } | null;
+  onServer: (p: string) => void;  // correct the server: their team rotates so they're at position 1
   wonBy: Team | null;      // which team won this rally, from its tags
   needTeams: boolean;      // teams not entered yet: tagging new rallies waits for them
   onTeams: () => void;
@@ -89,13 +94,11 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   const saved = rally?.touches ?? [];
   const [skill, setSkill] = useState<Skill | null>(null);  // null = use the prediction
   const [sel, setSel] = useState<number | null>(null);     // touch being edited
-  const [serverPick, setServerPick] = useState<string | null>(null);  // correction of the predicted server
   const [fixServer, setFixServer] = useState(false);
   useEffect(() => { setSkill(null); }, [rally?.s, saved.length]);
-  useEffect(() => { setSel(null); setServerPick(null); setFixServer(false); }, [rally?.s]);
+  useEffect(() => { setSel(null); setFixServer(false); }, [rally?.s]);
   // The predicted serve is shown as the first touch and saved with the next tap (or the result).
-  const preP = rally && !saved.length && serve?.pred.guesses.length ? serverPick ?? serve.pred.guesses[0].p : null;
-  const pre: Touch | null = preP && serve ? { p: preP, k: 'serve', t: Math.round(serve.t * 10) / 10 } : null;
+  const pre: Touch | null = rally && !saved.length && serve?.p ? { p: serve.p, k: 'serve', t: Math.round(serve.t * 10) / 10 } : null;
   const touches = pre ? [pre] : saved;
   const blocked = needTeams && !saved.length;
   const sorted = [...players].sort((a, b) => (a.number ?? 99) - (b.number ?? 99));
@@ -108,7 +111,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
     if (!rally) return;
     if (blocked) return;
     if (sel !== null) {  // change who made the selected touch
-      if (pre) setServerPick(p);
+      if (pre) onServer(p);
       else onChange(touches.map((x, i) => i === sel ? { ...x, p } : x), rally.end);
       setSel(null);
       return;
@@ -118,7 +121,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
     // choosing Serve by hand replaces the predicted server
     onChange(pre && k === 'serve' ? [touch] : [...touches, touch]);
   };
-  const correctServer = (p: string) => { setServerPick(p); setFixServer(false); };
+  const correctServer = (p: string) => { onServer(p); setFixServer(false); };
   const undo = () => saved.length && onChange(saved.slice(0, -1));
   const pickSkill = (s: Skill) => {
     if (sel !== null && rally && !pre) { onChange(touches.map((x, i) => i === sel ? { ...x, k: s } : x), rally.end); setSel(null); }
@@ -166,9 +169,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
     : blocked ? 'Enter both teams before tagging'
     : res ? <>Ended: <b className={res.good ? 'text-good' : 'text-bad'}>{res.label} · {name(res.who)}</b>{res.assist && <span className="text-muted"> (assist {name(res.assist)})</span>}{res.note && <span className="text-muted"> ({name(res.noteWho)} {res.note})</span>}{wonBy && <span className="text-muted"> · Team {wonBy.toUpperCase()}'s point</span>}</>
     : touches.length ? 'Next touch, or how did it end?' : 'Who served?';
-  const why = !serve ? '' : serve.pred.first ? 'first rally'
-    : serve.pred.lastWinner ? `Team ${serve.pred.lastWinner.toUpperCase()} won the last rally`
-    : "couldn't tell who won the last rally";
+  const why = serve?.why ?? '';
 
   return (
     <div className="space-y-2 rounded-xl border border-line bg-surface p-2">
@@ -215,7 +216,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
             <div className="rounded-lg bg-raised px-2 py-1.5 text-xs">
               <div className="flex items-center gap-2">
                 <span className="min-w-0 flex-1">
-                  🏐 <b>{name(pre.p)}</b> serves{serverPick ? ' (corrected)' : <span className="text-muted"> · {why}</span>}
+                  🏐 <b>{name(pre.p)}</b> serves <span className="text-muted">· {why}</span>
                 </span>
                 <button className="shrink-0 rounded-md border border-line px-2 py-1" onClick={() => setFixServer(!fixServer)}>
                   {fixServer ? 'Cancel' : 'Wrong server?'}
@@ -232,11 +233,11 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
           )}
           {blocked && (
             <button onClick={onTeams} className="w-full rounded-lg border border-ball/60 bg-ball/10 px-3 py-3 text-sm font-semibold text-ball">
-              Enter both teams, their roles and serving order first →
+              Set up both teams on the court first →
             </button>
           )}
           {!blocked && <>
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-1 lg:grid-cols-4 xl:grid-cols-7">
             {SKILL_KEYS.map(s => (
               <button key={s} onClick={() => pickSkill(s)}
                 className={`rounded-md border py-1 text-[11px] font-semibold ${s === k ? 'border-ball bg-ball text-bg' : 'border-line text-muted'}`}>
@@ -244,7 +245,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-3">
+          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-3">
             {sorted.map((pl, i) => (
               <button key={pl.id} onClick={() => addTouch(pl.id)}
                 className="flex items-center justify-between gap-1 rounded-lg border border-line bg-raised px-2 py-2 text-left text-sm font-semibold active:scale-[0.97] active:border-ball">
@@ -311,6 +312,10 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   const rally = list[cur];
   // suggested touch moments for this rally that haven't been tagged or skipped yet
   const sugs = mode === 'tag' && rally ? suggestTouches(game.peaks, rally.s, rally.e) : [];
+  // the two teams on court for this rally (worked out from the setup and earlier rallies, or as saved)
+  const setup = gameSetup(game);
+  const teamsReady = setupReady(setup);
+  const view = mode === 'tag' && rally && teamsReady ? courtFor(setup, list, cur) : null;
   const handled = (t: number) =>
     (rally?.touches ?? []).some(x => Math.abs(x.t - t) < 0.15) || (rally?.sk ?? []).some(x => Math.abs(x - t) < 0.05);
   const pendingIdx = sugs.findIndex(t => !handled(t));
@@ -449,13 +454,21 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
     const updated = rallies.map(r => {
       if (r !== r0) return r;
       const { tag: _t, end: _e, touches: _ts, ...rest } = r;
-      return { ...rest, touches, ...(end && end.i < touches.length ? { end } : {}) };
+      // tagging a rally also saves the court it was played on, so later rallies rotate from it
+      const court = rest.court ?? (view && touches.length ? courtOnly(view.state) : undefined);
+      return { ...rest, touches, ...(end && end.i < touches.length ? { end } : {}), ...(court ? { court } : {}) };
     });
     const res = rallyResult(updated.find(r => r.s === r0.s)!);
     const who = (pid: string) => pid === 'guest' ? 'Guest' : players?.find(p => p.id === pid)?.name ?? pid;
     const chain = touches.map(t => `${who(t.p)} ${SKILLS[t.k].toLowerCase()}`).join(' → ');
     commit(updated, r0.s, [`tag:${r0.as ?? r0.s}`, !touches.length ? `${label(r0)}: cleared tags`
       : `${label(r0)}: ${chain}${res ? ` ⇒ ${res.label} · ${who(res.who)}` : ' (in progress)'}`]);
+  };
+  const setCourt = (c: CourtState, what: string, manual = true) => {
+    if (!rally) return;
+    const r0 = rally;
+    const court = { ...courtOnly(c), ...(manual ? { manual: true } : {}) };
+    commit(rallies.map(r => r === r0 ? { ...r, court } : r), r0.s, [`court:${r0.as ?? r0.s}`, `${label(r0)}: ${what}`]);
   };
   const resume = () => { setAtSug(null); if (step) player.current?.playVideo(); };
   const skipSug = () => {
@@ -504,7 +517,8 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
 
   // Fills the screen: phone = video on top + list scrolling below; wide screen = video left, list right.
   return (
-    <div className="flex h-[calc(100dvh-11.5rem-env(safe-area-inset-top))] flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)] lg:gap-6">
+    <div className={`flex h-[calc(100dvh-11.5rem-env(safe-area-inset-top))] flex-col gap-3 lg:grid lg:gap-5 ${mode === 'tag'
+      ? 'lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,1fr)_minmax(250px,0.8fr)]' : 'lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]'}`}>
       <div className="shrink-0 space-y-2 lg:overflow-y-auto">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
@@ -522,7 +536,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
           )}
         </div>
         {showHistory && <HistoryDialog gameId={game.id} onClose={() => setShowHistory(false)} />}
-        {teamsOpen && <TeamsDialog game={game} rallies={rallies} players={players ?? []} onClose={() => setTeamsOpen(false)} />}
+        {teamsOpen && <TeamsDialog game={game} players={players ?? []} onClose={() => setTeamsOpen(false)} />}
         {highlighting && rally && (
           <HighlightDialog game={game} rally={rally} players={players ?? []} onClose={() => setHighlighting(false)} />
         )}
@@ -591,11 +605,14 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
             onChange={(ts, end) => { const added = ts.length > (rally?.touches?.length ?? 0); setTouches(ts, end); if (added && !end && atSug !== null) resume(); }}
             sug={step && atSug !== null && atSug === pending ? { t: pending, i: pendingIdx, n: sugs.length } : null}
             onSkip={skipSug}
-            serve={lineupReady(game.lineup) && rally && !rally.touches?.length
-              ? { pred: predictServer(game.lineup, list, cur), t: sugs[0] ?? rally.s, choices: [...new Set([...game.lineup.a, ...game.lineup.b])] }
-              : null}
-            wonBy={lineupReady(game.lineup) && rally ? rallyWinner(game.lineup, rally) : null}
-            needTeams={!lineupReady(game.lineup)}
+            serve={view && rally && !rally.touches?.length ? {
+              p: server(view.state), t: sugs[0] ?? rally.s,
+              why: view.saved ? 'as set on the court' : view.first ? 'first rally' : view.lastWinner ? `Team ${view.lastWinner.toUpperCase()} won the last rally` : "couldn't tell who won the last rally: check the court",
+              choices: TEAMS.flatMap(t => view.state[t].pos).filter(p => p !== 'guest'),
+            } : null}
+            onServer={p => view && setCourt(makeServer(view.state, p), `server changed to ${name(p)}`)}
+            wonBy={view && rally ? rallyWinner(view.state, rally) : null}
+            needTeams={!teamsReady}
             onTeams={() => setTeamsOpen(true)}
             onPrev={() => go(cur - 1)} onNext={() => go(cur + 1)} hasPrev={cur > 0} hasNext={cur < list.length - 1} />
         )}
@@ -610,14 +627,14 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
         )}
 
         {mode === 'tag' && (
-          <button onClick={() => setTeamsOpen(true)} className="flex shrink-0 items-center gap-2 px-1 text-left text-xs text-muted">
-            <span className="min-w-0 flex-1 truncate">
-              {game.lineup && (game.lineup.a.length || game.lineup.b.length)
-                ? <>Teams: <b className="font-medium text-ink">A</b> {game.lineup.a.map(name).join(', ')} · <b className="font-medium text-ink">B</b> {game.lineup.b.map(name).join(', ')}</>
-                : 'No teams yet: enter them before tagging'}
-            </span>
-            <span className="shrink-0 text-ball">Edit teams</span>
-          </button>
+          <details className="shrink-0 rounded-xl border border-line bg-surface px-2 py-1.5 lg:hidden">
+            <summary className="cursor-pointer text-xs text-muted">
+              Rotation{view ? <>: 🏐 <b className="text-ink">{name(server(view.state))}</b> serves for Team {view.state.serving.toUpperCase()}</> : teamsReady ? '' : ': teams not set up yet'}
+            </summary>
+            <div className="mx-auto mt-2 max-w-[17rem]">
+              <RotationPanel view={view} setup={setup} name={name} onChange={setCourt} onSetup={() => setTeamsOpen(true)} />
+            </div>
+          </details>
         )}
 
         {mode === 'review' && !game.reviewed && (
@@ -685,6 +702,53 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
           )}
         </ol>
       </div>
+
+      {mode === 'tag' && (
+        <div className="hidden min-h-0 overflow-y-auto lg:block">
+          <div className="rounded-xl border border-line bg-surface p-2">
+            <RotationPanel view={view} setup={setup} name={name} onChange={setCourt} onSetup={() => setTeamsOpen(true)} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The live court for the rally being tagged: checked by the reviewer, fixed by dragging or rotating. */
+function RotationPanel({ view, setup, name, onChange, onSetup }: {
+  view: CourtView | null; setup: CourtSetup | null; name: (id?: string) => string;
+  onChange: (c: CourtState, what: string, manual?: boolean) => void; onSetup: () => void;
+}) {
+  if (!setupReady(setup)) return (
+    <div className="space-y-2 p-1 text-sm">
+      <p className="text-muted">Put both teams on the court before tagging: who starts at positions 1–6, the subs, and roles.</p>
+      <button onClick={onSetup} className="w-full rounded-lg bg-ball py-2 font-semibold text-bg">Set up teams</button>
+    </div>
+  );
+  const shown = view?.state ?? setup;
+  const warn = !!view?.mismatch && !view.manual;
+  const status = !view ? 'Starting positions · pick a rally'
+    : warn ? '⚠ Differs from the rotation'
+    : view.manual ? '✓ Changed by hand'
+    : view.saved ? '✓ Checked' : 'Auto: check it matches the video';
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2 px-0.5">
+        <span className="text-sm font-semibold">Rotation</span>
+        <span className={`truncate text-[11px] ${warn ? 'text-ball' : view?.saved ? 'text-good' : 'text-muted'}`}>{status}</span>
+      </div>
+      <Court c={shown} name={id => name(id)} roles={setup.roles} controls={!!view}
+        onChange={view ? c => onChange(c, 'changed the court') : undefined} />
+      {view?.mismatch && (
+        <button onClick={() => onChange(view.derived, 'reset the court to the rotation', false)}
+          className={`w-full rounded-md border px-2 py-1.5 text-xs ${warn ? 'border-ball/50 text-ball' : 'border-line text-muted'}`}>
+          {warn ? 'An earlier rally changed: use' : 'Undo changes: back to'} the rotation's version ({name(server(view.derived))} serving)
+        </button>
+      )}
+      <p className="px-0.5 text-[11px] text-muted">
+        Drag a sub onto a player (or tap one, then the other) to swap them. Changes apply from this rally on.
+      </p>
+      <button onClick={onSetup} className="px-0.5 text-xs text-ball">Edit starting teams</button>
     </div>
   );
 }
@@ -985,116 +1049,131 @@ function HighlightDialog({ game, rally, players, onClose }: { game: Game; rally:
   );
 }
 
-/** The two teams for this game: serving order, roles, and players who don't serve (e.g. a libero). */
-function TeamsDialog({ game, rallies, players, onClose }: { game: Game; rallies: Rally[]; players: Player[]; onClose: () => void }) {
+const POS_NAMES = ['back right', 'front right', 'front middle', 'front left', 'back left', 'back middle'];
+
+/** First empty starting spot (positions 1 → 6, team A first unless told otherwise), else that team's subs. */
+function nextSpot(c: CourtState, prefer: Team): string {
+  for (const t of [prefer, prefer === 'a' ? 'b' : 'a'] as Team[]) {
+    const i = c[t].pos.findIndex(p => !p);
+    if (i >= 0) return `${t}.pos.${i}`;
+  }
+  return `${prefer}.bench.end`;
+}
+
+/** Set up the two teams for the first rally: tap a spot (1 → 6 goes automatically), then the player there. */
+function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]; onClose: () => void }) {
   const user = useAuth()?.user ?? null;
   const games = useGames();
-  const empty: Lineup = { a: [], b: [], nonServing: { a: [], b: [] }, roles: {} };
-  const norm = (x?: Lineup | null): Lineup => x ? { a: x.a, b: x.b, nonServing: x.nonServing ?? { a: [], b: [] }, roles: x.roles ?? {} } : empty;
+  const blank: CourtSetup = { a: emptySide(), b: emptySide(), serving: 'a', roles: {} };
+  const [c, setC] = useState<CourtSetup>(() => gameSetup(game) ?? blank);
+  const [target, setTarget] = useState<string>(() => nextSpot(gameSetup(game) ?? blank, 'a'));
   const [busy, setBusy] = useState(false);
   const name = (id: string) => id === 'guest' ? 'Guest' : players.find(p => p.id === id)?.name ?? id;
-  const defaultRole = (id: string) => players.find(p => p.id === id)?.positions[0];
-
-  // keep roles for everyone on a team; new players start with their usual position
-  const withRoles = (x: Lineup): Lineup => {
-    const ids = [...x.a, ...x.b, ...x.nonServing!.a, ...x.nonServing!.b].filter(p => p !== 'guest');
-    const r: Record<string, Position> = {};
-    for (const id of ids) { const v = x.roles?.[id] ?? defaultRole(id); if (v) r[id] = v; }
-    return { ...x, roles: r };
-  };
-  const [l, setL] = useState<Lineup>(() => withRoles(norm(game.lineup)));
-  const ns = l.nonServing!, roles = l.roles!;
-  const used = new Set([...l.a, ...l.b, ...ns.a, ...ns.b]);
-  // most recent earlier game with teams set (lineups often carry over between games of a session)
-  const prev = (games ?? []).filter(g => g.id !== game.id && lineupReady(g.lineup) && (g.date + g.title) <= (game.date + game.title))
+  const used = new Set(TEAMS.flatMap(t => [...c[t].pos, ...c[t].bench]).filter(p => p && p !== 'guest'));
+  const prev = (games ?? []).filter(g => g.id !== game.id && setupReady(gameSetup(g)) && (g.date + g.title) <= (game.date + game.title))
     .sort((x, y) => (y.date + y.title).localeCompare(x.date + x.title))[0] ?? null;
-  const learned = learnLineup(rallies.filter(r => r.st !== 'bad'));
-  const update = (f: (x: Lineup) => Lineup) => setL(x => withRoles(f(x)));
-  const edit = (t: Team, list: 'order' | 'ns', f: (xs: string[]) => string[]) =>
-    update(x => list === 'order' ? { ...x, [t]: f(x[t]) } : { ...x, nonServing: { ...x.nonServing!, [t]: f(x.nonServing![t]) } });
-  const move = (t: Team, i: number, d: number) => edit(t, 'order', xs => {
-    const j = i + d;
-    if (j < 0 || j >= xs.length) return xs;
-    const n = [...xs]; [n[i], n[j]] = [n[j], n[i]]; return n;
-  });
-  const setRole = (id: string, r: Position) => setL(x => ({ ...x, roles: { ...x.roles, [id]: r } }));
-  const missingRole = [...used].filter(p => p !== 'guest' && !roles[p]);
-  const ok = lineupReady(l) && !missingRole.length;
+  const tTeam = target.split('.')[0] as Team;
+  const tSpot = target.split('.')[1] === 'pos' ? Number(target.split('.')[2]) : -1;
+  const tPlayer = tSpot >= 0 ? c[tTeam].pos[tSpot] : '';
+
+  // roles for everyone on a team; new players start with their usual position
+  const withRoles = (x: CourtSetup): CourtSetup => {
+    const roles: CourtSetup['roles'] = {};
+    for (const id of TEAMS.flatMap(t => [...x[t].pos, ...x[t].bench])) {
+      if (!id || id === 'guest') continue;
+      const r = x.roles[id] ?? players.find(p => p.id === id)?.positions[0];
+      if (r) roles[id] = r;
+    }
+    return { ...x, roles };
+  };
+  const place = (id: string) => {
+    const t = tTeam;
+    const n: CourtSetup = { ...c, [t]: { pos: [...c[t].pos], bench: [...c[t].bench] } };
+    if (tSpot >= 0) n[t].pos[tSpot] = id;
+    else n[t].bench.push(id);
+    const w = withRoles(n);
+    setC(w);
+    setTarget(nextSpot(w, t));
+  };
+  const clearSpot = () => {
+    if (tSpot < 0) return;
+    setC(withRoles({ ...c, [tTeam]: { ...c[tTeam], pos: c[tTeam].pos.map((p, i) => i === tSpot ? '' : p) } }));
+  };
+  const missingRole = [...used].filter(p => !c.roles[p]);
+  const ok = setupReady(c) && !missingRole.length;
 
   const save = async () => {
     setBusy(true);
-    await updateGame(game.id, { lineup: l });
-    const desc = (t: Team) => [...l[t].map(name), ...ns[t].map(p => `${name(p)} (doesn't serve)`)].join(', ');
-    logHistory(game.id, user, [`Set the teams: A ${desc('a')}; B ${desc('b')}`]).catch(() => {});
+    await updateGame(game.id, { court: c });
+    const desc = (t: Team) => c[t].pos.map((p, i) => `${i + 1} ${name(p)}`).join(', ') + (c[t].bench.length ? `; subs ${c[t].bench.map(name).join(', ')}` : '');
+    logHistory(game.id, user, [`Set the starting teams: A ${desc('a')} · B ${desc('b')} · Team ${c.serving.toUpperCase()} serves first`]).catch(() => {});
     onClose();
   };
-  const sel = 'rounded-md border border-line bg-surface px-1 py-0.5 text-xs text-ink outline-none focus:border-ball';
-  const addSel = 'mt-1 w-full rounded-lg border border-line bg-raised px-2 py-1.5 text-sm text-ink outline-none focus:border-ball';
-  const roleSelect = (p: string) => p === 'guest' ? null : (
-    <select className={sel} value={roles[p] ?? ''} onChange={e => setRole(p, e.target.value as Position)} aria-label={`${name(p)}'s role`}>
-      {!roles[p] && <option value="">role</option>}
-      {(Object.keys(POSITIONS) as Position[]).map(r => <option key={r} value={r}>{r}</option>)}
-    </select>
-  );
+  const chip = 'rounded-lg border border-line bg-raised px-2.5 py-1.5 text-sm font-semibold active:scale-[0.97]';
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center" onClick={onClose}>
-      <div className="max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-t-2xl border border-line bg-surface p-4 sm:rounded-2xl" onClick={e => e.stopPropagation()}>
-        <h2 className="font-semibold">Teams</h2>
-        <p className="mt-1 text-sm text-muted">
-          List each team in serving order (a Guest slot for each guest) and give everyone a role.
-          The server is then picked for every rally from who won the one before.
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2 text-xs">
-          {prev && <button className="rounded-md border border-line px-2 py-1" onClick={() => setL(withRoles(norm(prev.lineup)))}>Copy from {prev.title}</button>}
-          {learned && <button className="rounded-md border border-line px-2 py-1" onClick={() => update(x => ({ ...x, a: learned.a, b: learned.b }))}>Guess order from tagged serves</button>}
-          {used.size > 0 && <button className="rounded-md border border-line px-2 py-1 text-muted" onClick={() => setL(empty)}>Clear</button>}
+      <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-2xl border border-line bg-surface p-4 sm:rounded-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h2 className="font-semibold">Starting teams</h2>
+            <p className="mt-0.5 text-sm text-muted">Who stands where at the first rally. Positions go 1 → 6 anticlockwise from back right; 1 serves.</p>
+          </div>
+          {prev && <button className="shrink-0 rounded-md border border-line px-2 py-1 text-xs" onClick={() => { const x = withRoles(gameSetup(prev)!); setC(x); setTarget(nextSpot(x, 'a')); }}>Copy from {prev.title}</button>}
         </div>
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {(['a', 'b'] as const).map(t => (
-            <div key={t} className="min-w-0">
-              <h3 className="mb-1 text-sm font-semibold">Team {t.toUpperCase()} <span className="font-normal text-muted">· serving order</span></h3>
-              <ol className="space-y-1">
-                {l[t].map((p, i) => (
-                  <li key={i} className="flex items-center gap-1 rounded-lg bg-raised px-2 py-1 text-sm">
-                    <span className="w-4 text-xs text-muted">{i + 1}</span>
-                    <span className={`min-w-0 flex-1 truncate ${p === 'guest' ? 'text-muted' : ''}`}>{name(p)}</span>
-                    {roleSelect(p)}
-                    <button className="px-1 text-muted disabled:opacity-30" disabled={i === 0} onClick={() => move(t, i, -1)} aria-label="Move up">↑</button>
-                    <button className="px-1 text-muted disabled:opacity-30" disabled={i === l[t].length - 1} onClick={() => move(t, i, 1)} aria-label="Move down">↓</button>
-                    <button className="px-1 text-bad" onClick={() => edit(t, 'order', xs => xs.filter((_, j) => j !== i))} aria-label="Remove">✕</button>
-                  </li>
-                ))}
-              </ol>
-              <select className={addSel} value="" onChange={e => { const v = e.target.value; if (v) edit(t, 'order', xs => [...xs, v]); }}>
-                <option value="">+ Add server…</option>
-                {players.filter(p => !used.has(p.id)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                <option value="guest">Guest</option>
-              </select>
-              {ns[t].length > 0 && (
-                <ul className="mt-2 space-y-1">
-                  {ns[t].map((p, i) => (
-                    <li key={p} className="flex items-center gap-1 rounded-lg border border-dashed border-line px-2 py-1 text-sm">
-                      <span className="min-w-0 flex-1 truncate">{name(p)} <span className="text-xs text-muted">doesn't serve</span></span>
-                      {roleSelect(p)}
-                      <button className="px-1 text-bad" onClick={() => edit(t, 'ns', xs => xs.filter((_, j) => j !== i))} aria-label="Remove">✕</button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <select className={`${addSel} text-muted`} value="" onChange={e => { const v = e.target.value; if (v) edit(t, 'ns', xs => [...xs, v]); }}>
-                <option value="">+ Player who doesn't serve (e.g. libero)…</option>
-                {players.filter(p => !used.has(p.id)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+        <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
+          <div className="mx-auto w-full max-w-[15rem]">
+            <Court c={c} name={name} roles={c.roles} allowEmpty target={target}
+              onSlot={k => setTarget(k)} onChange={x => setC(withRoles({ ...c, ...x }))} />
+          </div>
+          <div className="min-w-0 space-y-3">
+            <div className="rounded-lg bg-raised px-3 py-2 text-sm">
+              {tSpot >= 0
+                ? <>Team <b>{tTeam.toUpperCase()}</b>, position <b>{tSpot + 1}</b> ({POS_NAMES[tSpot]}): {tPlayer ? <>now <b>{name(tPlayer)}</b>, tap someone to replace</> : 'tap who stands there'}</>
+                : <>Team <b>{tTeam.toUpperCase()}</b> subs: tap players to add them</>}
+              {tPlayer && <button className="ml-2 text-xs text-bad underline" onClick={clearSpot}>clear</button>}
             </div>
-          ))}
+            <div className="flex flex-wrap gap-1.5">
+              {players.filter(p => !used.has(p.id)).map(p => <button key={p.id} className={chip} onClick={() => place(p.id)}>{p.name}</button>)}
+              <button className={`${chip} text-muted`} onClick={() => place('guest')}>Guest</button>
+            </div>
+            <div className="flex flex-wrap gap-1.5 text-xs">
+              {TEAMS.map(t => <button key={t} onClick={() => setTarget(`${t}.bench.end`)} className="rounded-md border border-line px-2 py-1">+ Team {t.toUpperCase()} sub</button>)}
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted">First serve</span>
+              {TEAMS.map(t => (
+                <button key={t} onClick={() => setC({ ...c, serving: t })}
+                  className={`rounded-md border px-3 py-1 ${c.serving === t ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>Team {t.toUpperCase()}</button>
+              ))}
+            </div>
+            {used.size > 0 && (
+              <div>
+                <p className="mb-1 text-xs text-muted">Roles</p>
+                <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+                  {[...used].map(id => (
+                    <label key={id} className="flex items-center justify-between gap-1 rounded-md bg-raised px-2 py-1 text-xs">
+                      <span className="truncate">{name(id)}</span>
+                      <select value={c.roles[id] ?? ''} onChange={e => setC({ ...c, roles: { ...c.roles, [id]: e.target.value as Position } })}
+                        className="rounded border border-line bg-surface px-1 py-0.5 text-ink outline-none">
+                        {!c.roles[id] && <option value="">role</option>}
+                        {(Object.keys(POSITIONS) as Position[]).map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-1 text-[11px] text-muted">A sub comes on automatically for the player of the same role rotating into position 1 (e.g. the extra middle). Other subs: drag them in while tagging.</p>
+              </div>
+            )}
+          </div>
         </div>
         {!ok && used.size > 0 && (
           <p className="mt-3 text-xs text-bad">
-            {!lineupReady(l) ? 'Both teams need at least one server.' : `Pick a role for ${missingRole.map(name).join(', ')}.`}
+            {!setupReady(c) ? 'Fill all six positions for both teams (use Guest for guests).' : `Pick a role for ${missingRole.map(name).join(', ')}.`}
           </p>
         )}
-        <div className="mt-4 flex gap-2">
+        <p className="mt-3 text-[11px] text-muted">Rallies already tagged keep the court saved with them.</p>
+        <div className="mt-2 flex gap-2">
           <button onClick={save} disabled={busy || !ok} className="flex-1 rounded-lg bg-ball py-2.5 font-semibold text-bg disabled:opacity-40">
             {busy ? 'Saving…' : 'Save teams'}
           </button>

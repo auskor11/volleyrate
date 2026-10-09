@@ -3,7 +3,7 @@ import {
   addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Lineup } from './rotation';
+import type { CourtSetup, CourtState, LegacyLineup } from './rotation';
 
 // One rally on the YouTube timeline. `as`/`ae` keep the detector's original bounds so reviewed
 // games can be exported to retrain the detector.
@@ -18,6 +18,7 @@ export interface Rally {
   end?: RallyEnd;          // which touch decided the rally
   sk?: number[];           // suggested touch moments the tagger skipped ("not a touch"), for tuning
   by?: string;             // who last edited this rally (first name)
+  court?: CourtState;      // where everyone stood, as checked when the rally was tagged or edited
 }
 
 // Edit history: games/{id}/history, append-only.
@@ -131,7 +132,8 @@ export interface Game {
   // Whether this game's stats count toward ratings. Missing = counted at 1× (games from before approval
   // existed); new games start { applied: false } until an admin applies them with per-player strengths.
   rating?: GameRating;
-  lineup?: Lineup;        // the two teams' serving orders, to predict who serves (see rotation.ts)
+  court?: CourtSetup;     // the two teams at the first rally: positions 1–6, subs, roles (see rotation.ts)
+  lineup?: LegacyLineup;  // teams saved in the older serving-order format (read via gameSetup)
 }
 
 export interface GameRating { applied: boolean; weights?: Record<string, number>; by?: string; at?: unknown }
@@ -186,7 +188,7 @@ export async function saveRallies(id: string, rallies: Rally[]) {
   await updateDoc(doc(db, 'games', id), { rallies: sorted, updatedAt: serverTimestamp() });
 }
 
-export async function updateGame(id: string, patch: Partial<Pick<Game, 'title' | 'date' | 'reviewed' | 'peaks' | 'lineup'>>) {
+export async function updateGame(id: string, patch: Partial<Pick<Game, 'title' | 'date' | 'reviewed' | 'peaks' | 'court'>>) {
   await updateDoc(doc(db, 'games', id), patch);
 }
 

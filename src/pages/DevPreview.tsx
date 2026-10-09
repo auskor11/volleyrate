@@ -52,7 +52,11 @@ export function DevGame() {
           .map((n, i) => ({ id: n.toLowerCase().replace(' ', '-'), name: n, number: [1, 11, 5, 83, 10, 81, 4, 9, 8, 17][i], positions: ['OH'], ratings: {} }))} game={{
           id: 'dev', title: 'Sample game', date: '2026-09-26', youtubeId: 'M7lc1UVf-VE', duration: 1340,
           rallies, reviewed: false, createdBy: 'dev', peaks: devSample.peaks,
-          lineup: location.search.includes('noteams') ? undefined : { a: ['alex', 'ben', 'guest', 'chris', 'dana'], b: ['eli', 'finn', 'gabe', 'guest', 'hana'], nonServing: { a: ['ivan'], b: [] }, roles: {} } }} />
+          court: location.search.includes('noteams') ? undefined : {
+            a: { pos: ['alex', 'ben', 'chris', 'dana', 'guest', 'eli'], bench: ['ivan'] },
+            b: { pos: ['finn', 'gabe', 'hana', 'guest', 'jo', 'guest'], bench: [] },
+            serving: 'a', roles: { alex: 'S', ben: 'OH', chris: 'MB', dana: 'OPP', eli: 'MB', ivan: 'MB', finn: 'S', gabe: 'OH', hana: 'MB', jo: 'OH' },
+          } }} />
       </div>
     </MemoryRouter>
   );
