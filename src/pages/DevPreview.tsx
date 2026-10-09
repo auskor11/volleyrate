@@ -51,7 +51,8 @@ export function DevGame() {
         <GamePlayer canDelete samplePlayers={['Alex', 'Ben', 'Chris', 'Dana', 'Eli', 'Finn', 'Gabe', 'Hana', 'Ivan', 'Jo']
           .map((n, i) => ({ id: n.toLowerCase().replace(' ', '-'), name: n, number: [1, 11, 5, 83, 10, 81, 4, 9, 8, 17][i], positions: ['OH'], ratings: {} }))} game={{
           id: 'dev', title: 'Sample game', date: '2026-09-26', youtubeId: 'M7lc1UVf-VE', duration: 1340,
-          rallies, reviewed: false, createdBy: 'dev', peaks: devSample.peaks }} />
+          rallies, reviewed: false, createdBy: 'dev', peaks: devSample.peaks,
+          lineup: location.search.includes('noteams') ? undefined : { a: ['alex', 'ben', 'guest', 'chris', 'dana'], b: ['eli', 'finn', 'gabe', 'guest', 'hana'], nonServing: { a: ['ivan'], b: [] }, roles: {} } }} />
       </div>
     </MemoryRouter>
   );

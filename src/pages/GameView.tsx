@@ -11,10 +11,11 @@ import { computeStats, type StatKey } from '../lib/stats';
 import { buildModel, effectiveRatings, type RatingModel } from '../lib/engine';
 import { useEngineSettings } from '../lib/rated';
 import { createBackup } from '../lib/backups';
-import { CATEGORIES, overall } from '../lib/ratings';
+import { CATEGORIES, POSITIONS, overall, type Position } from '../lib/ratings';
 import { logHistory, setGameRating, useGames, useHistory } from '../lib/games';
 import { addHighlight, useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
+import { learnLineup, lineupReady, predictServer, rallyWinner, type Lineup, type ServerPrediction, type Team } from '../lib/rotation';
 
 const STATUS: Record<Rally['st'], { label: string; cls: string }> = {
   auto: { label: 'unchecked', cls: 'bg-line text-muted' },
@@ -72,19 +73,31 @@ function Kbd({ k }: { k: string }) {
   return <span className="ml-1 hidden rounded border border-line px-1 font-mono text-[10px] text-muted lg:inline">{k}</span>;
 }
 
-function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange, onDone, onPrev, onNext, hasPrev, hasNext, sug, onSkip }: {
+function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange, onDone, onPrev, onNext, hasPrev, hasNext, sug, onSkip, serve, wonBy, needTeams, onTeams }: {
   rally: Rally | undefined; players: Player[]; name: (id?: string) => string; now: () => number;
   playing: () => boolean; togglePlay: () => void;
   onChange: (touches: Touch[], end?: RallyEnd) => void; onDone: () => void;
   onPrev: () => void; onNext: () => void; hasPrev: boolean; hasNext: boolean;
   sug: { t: number; i: number; n: number } | null;  // suggested touch waiting to be tagged
   onSkip: () => void;
+  // predicted server for an untagged rally (pre-selected), when the teams are set
+  serve: { pred: ServerPrediction; t: number; choices: string[] } | null;
+  wonBy: Team | null;      // which team won this rally, from its tags
+  needTeams: boolean;      // teams not entered yet: tagging new rallies waits for them
+  onTeams: () => void;
 }) {
-  const touches = rally?.touches ?? [];
+  const saved = rally?.touches ?? [];
   const [skill, setSkill] = useState<Skill | null>(null);  // null = use the prediction
   const [sel, setSel] = useState<number | null>(null);     // touch being edited
-  useEffect(() => { setSkill(null); }, [rally?.s, touches.length]);
-  useEffect(() => { setSel(null); }, [rally?.s]);
+  const [serverPick, setServerPick] = useState<string | null>(null);  // correction of the predicted server
+  const [fixServer, setFixServer] = useState(false);
+  useEffect(() => { setSkill(null); }, [rally?.s, saved.length]);
+  useEffect(() => { setSel(null); setServerPick(null); setFixServer(false); }, [rally?.s]);
+  // The predicted serve is shown as the first touch and saved with the next tap (or the result).
+  const preP = rally && !saved.length && serve?.pred.guesses.length ? serverPick ?? serve.pred.guesses[0].p : null;
+  const pre: Touch | null = preP && serve ? { p: preP, k: 'serve', t: Math.round(serve.t * 10) / 10 } : null;
+  const touches = pre ? [pre] : saved;
+  const blocked = needTeams && !saved.length;
   const sorted = [...players].sort((a, b) => (a.number ?? 99) - (b.number ?? 99));
   const k = skill ?? nextSkill(touches);
   const res = rally && rallyResult(rally);
@@ -93,21 +106,27 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   // at the suggested moment if paused on one; else the current time, minus reaction lag while playing
   const addTouch = (p: string) => {
     if (!rally) return;
+    if (blocked) return;
     if (sel !== null) {  // change who made the selected touch
-      onChange(touches.map((x, i) => i === sel ? { ...x, p } : x), rally.end);
+      if (pre) setServerPick(p);
+      else onChange(touches.map((x, i) => i === sel ? { ...x, p } : x), rally.end);
       setSel(null);
       return;
     }
     const t = sug ? sug.t : now() - (playing() ? REACTION : 0);
-    onChange([...touches, { p, k, t: Math.round(Math.max(rally.s, t) * 10) / 10 }]);
+    const touch = { p, k, t: Math.round(Math.max(rally.s, t) * 10) / 10 };
+    // choosing Serve by hand replaces the predicted server
+    onChange(pre && k === 'serve' ? [touch] : [...touches, touch]);
   };
-  const undo = () => touches.length && onChange(touches.slice(0, -1));
+  const correctServer = (p: string) => { setServerPick(p); setFixServer(false); };
+  const undo = () => saved.length && onChange(saved.slice(0, -1));
   const pickSkill = (s: Skill) => {
-    if (sel !== null && rally) { onChange(touches.map((x, i) => i === sel ? { ...x, k: s } : x), rally.end); setSel(null); }
+    if (sel !== null && rally && !pre) { onChange(touches.map((x, i) => i === sel ? { ...x, k: s } : x), rally.end); setSel(null); }
     else setSkill(s);
   };
   const removeSel = () => {
     if (sel === null || !rally) return;
+    if (pre) { setSel(null); return; }  // nothing saved yet
     const end = rally.end && rally.end.i !== sel ? { ...rally.end, i: rally.end.i > sel ? rally.end.i - 1 : rally.end.i } : undefined;
     onChange(touches.filter((_, i) => i !== sel), end);
     setSel(null);
@@ -144,8 +163,12 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   }, []);
 
   const status = !rally ? 'Tap a rally to start tagging'
-    : res ? <>Ended: <b className={res.good ? 'text-good' : 'text-bad'}>{res.label} · {name(res.who)}</b>{res.assist && <span className="text-muted"> (assist {name(res.assist)})</span>}{res.note && <span className="text-muted"> ({name(res.noteWho)} {res.note})</span>}</>
+    : blocked ? 'Enter both teams before tagging'
+    : res ? <>Ended: <b className={res.good ? 'text-good' : 'text-bad'}>{res.label} · {name(res.who)}</b>{res.assist && <span className="text-muted"> (assist {name(res.assist)})</span>}{res.note && <span className="text-muted"> ({name(res.noteWho)} {res.note})</span>}{wonBy && <span className="text-muted"> · Team {wonBy.toUpperCase()}'s point</span>}</>
     : touches.length ? 'Next touch, or how did it end?' : 'Who served?';
+  const why = !serve ? '' : serve.pred.first ? 'first rally'
+    : serve.pred.lastWinner ? `Team ${serve.pred.lastWinner.toUpperCase()} won the last rally`
+    : "couldn't tell who won the last rally";
 
   return (
     <div className="space-y-2 rounded-xl border border-line bg-surface p-2">
@@ -169,11 +192,11 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
             <div className="flex flex-wrap items-center gap-1 text-xs">
               {touches.map((t, i) => (
                 <button key={i} onClick={() => setSel(sel === i ? null : i)} title="Tap to change or delete this touch"
-                  className={`rounded-md px-1.5 py-0.5 ${sel === i ? 'ring-2 ring-ball' : ''} ${doubled === i ? 'outline outline-1 outline-bad' : ''} ${rally.end?.i === i ? (rally.end.r === 'point' ? 'bg-good/20 text-good' : 'bg-bad/20 text-bad') : 'bg-raised'}`}>
+                  className={`rounded-md px-1.5 py-0.5 ${sel === i ? 'ring-2 ring-ball' : ''} ${doubled === i ? 'outline outline-1 outline-bad' : ''} ${pre ? 'border border-dashed border-ball/60' : ''} ${rally.end?.i === i ? (rally.end.r === 'point' ? 'bg-good/20 text-good' : 'bg-bad/20 text-bad') : 'bg-raised'}`}>
                   {name(t.p)} <span className="text-muted">{SKILLS[t.k]}</span>
                 </button>
               ))}
-              <button className="ml-1 text-muted underline" onClick={undo}>undo<Kbd k="Z" /></button>
+              {saved.length > 0 && <button className="ml-1 text-muted underline" onClick={undo}>undo<Kbd k="Z" /></button>}
             </div>
           )}
           {sel !== null && touches[sel] && (
@@ -188,6 +211,31 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
               {name(touches[doubled].p)} is tagged twice in a row (touches {doubled} and {doubled + 1}); a player can't do that. Tap a touch to fix it.
             </p>
           )}
+          {pre && serve && (
+            <div className="rounded-lg bg-raised px-2 py-1.5 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1">
+                  🏐 <b>{name(pre.p)}</b> serves{serverPick ? ' (corrected)' : <span className="text-muted"> · {why}</span>}
+                </span>
+                <button className="shrink-0 rounded-md border border-line px-2 py-1" onClick={() => setFixServer(!fixServer)}>
+                  {fixServer ? 'Cancel' : 'Wrong server?'}
+                </button>
+              </div>
+              {fixServer && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {serve.choices.filter(p => p !== pre.p).map(p => (
+                    <button key={p} onClick={() => correctServer(p)} className="rounded-md border border-line bg-surface px-2 py-1 font-semibold">{name(p)}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {blocked && (
+            <button onClick={onTeams} className="w-full rounded-lg border border-ball/60 bg-ball/10 px-3 py-3 text-sm font-semibold text-ball">
+              Enter both teams, their roles and serving order first →
+            </button>
+          )}
+          {!blocked && <>
           <div className="grid grid-cols-7 gap-1">
             {SKILL_KEYS.map(s => (
               <button key={s} onClick={() => pickSkill(s)}
@@ -221,6 +269,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
               ))}
             </div>
           )}
+          </>}
         </>
       )}
     </div>
@@ -282,6 +331,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   const [ready, setReady] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [highlighting, setHighlighting] = useState(false);
+  const [teamsOpen, setTeamsOpen] = useState(false);
   const gameHighlights = useHighlights({ gameId: game.id });
   const starred = (r: Rally) => (gameHighlights ?? []).filter(h => Math.abs(h.s - r.s) < 1);
   const [step, setStep] = useState(false);  // pause at suggested touch moments while tagging (off until suggestions improve)
@@ -472,6 +522,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
           )}
         </div>
         {showHistory && <HistoryDialog gameId={game.id} onClose={() => setShowHistory(false)} />}
+        {teamsOpen && <TeamsDialog game={game} rallies={rallies} players={players ?? []} onClose={() => setTeamsOpen(false)} />}
         {highlighting && rally && (
           <HighlightDialog game={game} rally={rally} players={players ?? []} onClose={() => setHighlighting(false)} />
         )}
@@ -540,6 +591,12 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
             onChange={(ts, end) => { const added = ts.length > (rally?.touches?.length ?? 0); setTouches(ts, end); if (added && !end && atSug !== null) resume(); }}
             sug={step && atSug !== null && atSug === pending ? { t: pending, i: pendingIdx, n: sugs.length } : null}
             onSkip={skipSug}
+            serve={lineupReady(game.lineup) && rally && !rally.touches?.length
+              ? { pred: predictServer(game.lineup, list, cur), t: sugs[0] ?? rally.s, choices: [...new Set([...game.lineup.a, ...game.lineup.b])] }
+              : null}
+            wonBy={lineupReady(game.lineup) && rally ? rallyWinner(game.lineup, rally) : null}
+            needTeams={!lineupReady(game.lineup)}
+            onTeams={() => setTeamsOpen(true)}
             onPrev={() => go(cur - 1)} onNext={() => go(cur + 1)} hasPrev={cur > 0} hasNext={cur < list.length - 1} />
         )}
 
@@ -550,6 +607,17 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
                 Pause at AI-suggested touches (experimental)
               </label>
             : <AddSuggestions gameId={game.id} />
+        )}
+
+        {mode === 'tag' && (
+          <button onClick={() => setTeamsOpen(true)} className="flex shrink-0 items-center gap-2 px-1 text-left text-xs text-muted">
+            <span className="min-w-0 flex-1 truncate">
+              {game.lineup && (game.lineup.a.length || game.lineup.b.length)
+                ? <>Teams: <b className="font-medium text-ink">A</b> {game.lineup.a.map(name).join(', ')} · <b className="font-medium text-ink">B</b> {game.lineup.b.map(name).join(', ')}</>
+                : 'No teams yet: enter them before tagging'}
+            </span>
+            <span className="shrink-0 text-ball">Edit teams</span>
+          </button>
         )}
 
         {mode === 'review' && !game.reviewed && (
@@ -909,6 +977,126 @@ function HighlightDialog({ game, rally, players, onClose }: { game: Game; rally:
         <div className="mt-4 flex gap-2">
           <button onClick={save} disabled={busy || !pid} className="flex-1 rounded-lg bg-ball py-2.5 font-semibold text-bg disabled:opacity-40">
             {busy ? 'Saving…' : 'Save highlight'}
+          </button>
+          <button onClick={onClose} className="rounded-lg border border-line px-4 py-2.5">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The two teams for this game: serving order, roles, and players who don't serve (e.g. a libero). */
+function TeamsDialog({ game, rallies, players, onClose }: { game: Game; rallies: Rally[]; players: Player[]; onClose: () => void }) {
+  const user = useAuth()?.user ?? null;
+  const games = useGames();
+  const empty: Lineup = { a: [], b: [], nonServing: { a: [], b: [] }, roles: {} };
+  const norm = (x?: Lineup | null): Lineup => x ? { a: x.a, b: x.b, nonServing: x.nonServing ?? { a: [], b: [] }, roles: x.roles ?? {} } : empty;
+  const [busy, setBusy] = useState(false);
+  const name = (id: string) => id === 'guest' ? 'Guest' : players.find(p => p.id === id)?.name ?? id;
+  const defaultRole = (id: string) => players.find(p => p.id === id)?.positions[0];
+
+  // keep roles for everyone on a team; new players start with their usual position
+  const withRoles = (x: Lineup): Lineup => {
+    const ids = [...x.a, ...x.b, ...x.nonServing!.a, ...x.nonServing!.b].filter(p => p !== 'guest');
+    const r: Record<string, Position> = {};
+    for (const id of ids) { const v = x.roles?.[id] ?? defaultRole(id); if (v) r[id] = v; }
+    return { ...x, roles: r };
+  };
+  const [l, setL] = useState<Lineup>(() => withRoles(norm(game.lineup)));
+  const ns = l.nonServing!, roles = l.roles!;
+  const used = new Set([...l.a, ...l.b, ...ns.a, ...ns.b]);
+  // most recent earlier game with teams set (lineups often carry over between games of a session)
+  const prev = (games ?? []).filter(g => g.id !== game.id && lineupReady(g.lineup) && (g.date + g.title) <= (game.date + game.title))
+    .sort((x, y) => (y.date + y.title).localeCompare(x.date + x.title))[0] ?? null;
+  const learned = learnLineup(rallies.filter(r => r.st !== 'bad'));
+  const update = (f: (x: Lineup) => Lineup) => setL(x => withRoles(f(x)));
+  const edit = (t: Team, list: 'order' | 'ns', f: (xs: string[]) => string[]) =>
+    update(x => list === 'order' ? { ...x, [t]: f(x[t]) } : { ...x, nonServing: { ...x.nonServing!, [t]: f(x.nonServing![t]) } });
+  const move = (t: Team, i: number, d: number) => edit(t, 'order', xs => {
+    const j = i + d;
+    if (j < 0 || j >= xs.length) return xs;
+    const n = [...xs]; [n[i], n[j]] = [n[j], n[i]]; return n;
+  });
+  const setRole = (id: string, r: Position) => setL(x => ({ ...x, roles: { ...x.roles, [id]: r } }));
+  const missingRole = [...used].filter(p => p !== 'guest' && !roles[p]);
+  const ok = lineupReady(l) && !missingRole.length;
+
+  const save = async () => {
+    setBusy(true);
+    await updateGame(game.id, { lineup: l });
+    const desc = (t: Team) => [...l[t].map(name), ...ns[t].map(p => `${name(p)} (doesn't serve)`)].join(', ');
+    logHistory(game.id, user, [`Set the teams: A ${desc('a')}; B ${desc('b')}`]).catch(() => {});
+    onClose();
+  };
+  const sel = 'rounded-md border border-line bg-surface px-1 py-0.5 text-xs text-ink outline-none focus:border-ball';
+  const addSel = 'mt-1 w-full rounded-lg border border-line bg-raised px-2 py-1.5 text-sm text-ink outline-none focus:border-ball';
+  const roleSelect = (p: string) => p === 'guest' ? null : (
+    <select className={sel} value={roles[p] ?? ''} onChange={e => setRole(p, e.target.value as Position)} aria-label={`${name(p)}'s role`}>
+      {!roles[p] && <option value="">role</option>}
+      {(Object.keys(POSITIONS) as Position[]).map(r => <option key={r} value={r}>{r}</option>)}
+    </select>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center" onClick={onClose}>
+      <div className="max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-t-2xl border border-line bg-surface p-4 sm:rounded-2xl" onClick={e => e.stopPropagation()}>
+        <h2 className="font-semibold">Teams</h2>
+        <p className="mt-1 text-sm text-muted">
+          List each team in serving order (a Guest slot for each guest) and give everyone a role.
+          The server is then picked for every rally from who won the one before.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+          {prev && <button className="rounded-md border border-line px-2 py-1" onClick={() => setL(withRoles(norm(prev.lineup)))}>Copy from {prev.title}</button>}
+          {learned && <button className="rounded-md border border-line px-2 py-1" onClick={() => update(x => ({ ...x, a: learned.a, b: learned.b }))}>Guess order from tagged serves</button>}
+          {used.size > 0 && <button className="rounded-md border border-line px-2 py-1 text-muted" onClick={() => setL(empty)}>Clear</button>}
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {(['a', 'b'] as const).map(t => (
+            <div key={t} className="min-w-0">
+              <h3 className="mb-1 text-sm font-semibold">Team {t.toUpperCase()} <span className="font-normal text-muted">· serving order</span></h3>
+              <ol className="space-y-1">
+                {l[t].map((p, i) => (
+                  <li key={i} className="flex items-center gap-1 rounded-lg bg-raised px-2 py-1 text-sm">
+                    <span className="w-4 text-xs text-muted">{i + 1}</span>
+                    <span className={`min-w-0 flex-1 truncate ${p === 'guest' ? 'text-muted' : ''}`}>{name(p)}</span>
+                    {roleSelect(p)}
+                    <button className="px-1 text-muted disabled:opacity-30" disabled={i === 0} onClick={() => move(t, i, -1)} aria-label="Move up">↑</button>
+                    <button className="px-1 text-muted disabled:opacity-30" disabled={i === l[t].length - 1} onClick={() => move(t, i, 1)} aria-label="Move down">↓</button>
+                    <button className="px-1 text-bad" onClick={() => edit(t, 'order', xs => xs.filter((_, j) => j !== i))} aria-label="Remove">✕</button>
+                  </li>
+                ))}
+              </ol>
+              <select className={addSel} value="" onChange={e => { const v = e.target.value; if (v) edit(t, 'order', xs => [...xs, v]); }}>
+                <option value="">+ Add server…</option>
+                {players.filter(p => !used.has(p.id)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                <option value="guest">Guest</option>
+              </select>
+              {ns[t].length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {ns[t].map((p, i) => (
+                    <li key={p} className="flex items-center gap-1 rounded-lg border border-dashed border-line px-2 py-1 text-sm">
+                      <span className="min-w-0 flex-1 truncate">{name(p)} <span className="text-xs text-muted">doesn't serve</span></span>
+                      {roleSelect(p)}
+                      <button className="px-1 text-bad" onClick={() => edit(t, 'ns', xs => xs.filter((_, j) => j !== i))} aria-label="Remove">✕</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <select className={`${addSel} text-muted`} value="" onChange={e => { const v = e.target.value; if (v) edit(t, 'ns', xs => [...xs, v]); }}>
+                <option value="">+ Player who doesn't serve (e.g. libero)…</option>
+                {players.filter(p => !used.has(p.id)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          ))}
+        </div>
+        {!ok && used.size > 0 && (
+          <p className="mt-3 text-xs text-bad">
+            {!lineupReady(l) ? 'Both teams need at least one server.' : `Pick a role for ${missingRole.map(name).join(', ')}.`}
+          </p>
+        )}
+        <div className="mt-4 flex gap-2">
+          <button onClick={save} disabled={busy || !ok} className="flex-1 rounded-lg bg-ball py-2.5 font-semibold text-bg disabled:opacity-40">
+            {busy ? 'Saving…' : 'Save teams'}
           </button>
           <button onClick={onClose} className="rounded-lg border border-line px-4 py-2.5">Cancel</button>
         </div>

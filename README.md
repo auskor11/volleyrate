@@ -20,6 +20,7 @@
   - Pick the original file on your phone or laptop. The rally detector runs **on that device** and saves only the rally times.
 - **Review:** fix the detected rallies (good / not a rally / adjust start and end / add missed ones). Each change is kept in the game's edit history.
 - **Touch tagging:** tag every contact (serve → receive → set → attack …) and how each rally ended. Keyboard shortcuts and tap-friendly buttons; AI-suggested touch moments come from contact sounds.
+  Before tagging, enter both teams (serving order, roles, and players who don't serve, e.g. a libero), or copy them from the last game. The server is then pre-selected for every rally from which team won the one before; correcting it restarts the rotation from that player (`src/lib/rotation.ts`).
 - **Stats and ratings:**
   - Tagged games produce a box score and per-player stats, with links to the clips.
   - Once the admin applies a game, its stats move the ratings. See **[docs/ratings.md](docs/ratings.md)** for exactly how.
@@ -72,6 +73,7 @@ src/
     rated.ts         hooks: players with effective ratings, engine settings
     stats.ts         per-player stat lists with clip links
     games.ts         game/rally/touch types, tagging rules, Firestore access
+    rotation.ts      serving rotation: predicts who serves next from the teams' orders
     detector.ts      runs public/detector in a worker
     training.ts      in-browser retraining of the clip classifier
     backups.ts       rating backups
@@ -95,7 +97,7 @@ private.example/     the formats of the files in private/
 |---|---|---|
 | `members/{email}` | `{ playerId, role: 'admin' \| 'player' }`: who may sign in | admin |
 | `players/{id}` | `{ name, number, positions[], ratings{attr: 0–99} }`: starting ratings | admin |
-| `games/{id}` | `{ title, date, youtubeId, duration, reviewed, rallies[], segments?, peaks?, rating? }` | team (only admin deletes) |
+| `games/{id}` | `{ title, date, youtubeId, duration, reviewed, rallies[], segments?, peaks?, rating?, lineup?: { a[], b[], nonServing?, roles? } }` | team (only admin deletes) |
 | `games/{id}/history` | append-only edit log | team (add only) |
 | `highlights/{id}` | `{ playerId, gameId, youtubeId, s, e, note, by }` | the adder; removable by the adder, the player, or admin |
 | `config/ratingsEngine` | rating sensitivity settings | admin |
