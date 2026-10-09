@@ -4,16 +4,17 @@
 // Positions are numbered the standard way, anticlockwise from back right: 1 (serves), 2 front right,
 // 3 front middle, 4 front left, 5 back left, 6 back middle. pos[0] is position 1.
 //
-// Roles belong to court spots, set by where the spot starts: 1 OH, 2 S, 3 MB, 4 OH, 5 OPP, 6 L. A spot
-// keeps its role as it rotates, so players who swap spots swap roles, and a sub takes over the role of
-// the player they replace.
+// Roles belong to court spots. At the start of a set they are 1 OH1, 2 S, 3 MB, 4 OH2, 5 OPP, 6 L; a clip
+// that starts mid-set is set up by saying which roles are at positions 1 and 2 (that pair fixes the rest).
+// A spot keeps its role as it rotates, so players who swap spots swap roles, and a sub takes over the
+// role of the player they replace.
 //
 // After each rally: if the serving team won, nothing moves. Otherwise the other team wins the serve and
 // rotates clockwise (2 → 1, 3 → 2 … 1 → 6), and its new position-1 player serves. The extra middle
 // blocker (a sub marked as such) comes on for the libero when the libero's spot reaches the front row
 // (5 → 4), serves when it gets to 1, and the libero comes back on as it moves to the back row (1 → 6).
-// Other subs are made by the reviewer. Each rally's court is saved once it's tagged or edited, so a fix
-// carries forward from there.
+// Other subs are made by the reviewer. A rally only stores a court when the reviewer changes it by hand;
+// every other rally's court is worked out from the setup and those changes, so fixes carry forward.
 import type { Rally, Skill, Touch } from './games';
 import type { Position } from './ratings';
 
@@ -21,8 +22,15 @@ export type Team = 'a' | 'b';
 export const TEAMS: Team[] = ['a', 'b'];
 export const other = (t: Team): Team => (t === 'a' ? 'b' : 'a');
 
-/** Role of each spot by where it starts: position 1 OH, 2 S, 3 MB, 4 OH, 5 OPP, 6 L. */
+/** Roles of positions 1–6 at the start of a set: OH1, S, MB, OH2, OPP, L. */
 export const START_ROLES: Position[] = ['OH', 'S', 'MB', 'OH', 'OPP', 'L'];
+export const ROLE_NAMES = ['OH1', 'S', 'MB', 'OH2', 'OPP', 'L'];
+
+/** Spot roles k rotations into a set (k = 0: start of a set). Position 1 has ROLE_NAMES[k], 2 has ROLE_NAMES[k + 1]. */
+export const rolesAt = (k: number): Position[] => START_ROLES.map((_, i) => START_ROLES[(i + k) % 6]);
+/** Which rotation a set of spot roles is (0–5). */
+export const rotationOf = (roles: Position[]): number =>
+  [0, 1, 2, 3, 4, 5].find(k => rolesAt(k).every((r, i) => r === roles[i])) ?? 0;
 
 /**
  * One team. pos[0] = position 1 … pos[5] = position 6 ('' = nobody yet); roles[i] = role of the spot at
@@ -112,6 +120,20 @@ export function makeServer(c: CourtState, p: string): CourtState {
   return c;
 }
 
+/**
+ * Setups list the libero in the libero's spot. If that spot is in the front row or serving (positions
+ * 4, 3, 2, 1), the extra middle is the one on court there.
+ */
+function startSide(s: Side): Side {
+  const i = s.roles.indexOf('L');
+  if (i < 0 || i > 3 || !s.mb || !s.bench.includes(s.mb) || !s.pos[i] || s.pos[i] === s.mb) return s;
+  return { ...s, libero: s.pos[i], pos: s.pos.map((p, j) => (j === i ? s.mb! : p)), bench: [...s.bench.filter(b => b !== s.mb), s.pos[i]] };
+}
+export const startCourt = (c: CourtSetup): CourtState => {
+  const n = courtOnly(c);
+  return { ...n, a: startSide(n.a), b: startSide(n.b) };
+};
+
 /** The court after rally r, and who won it. */
 function advance(c: CourtState, r: Rally): { next: CourtState; winner: Team | null } {
   let cur = c;
@@ -129,26 +151,28 @@ export const sameCourt = (x: CourtState, y: CourtState) => JSON.stringify(courtO
 export interface CourtView {
   state: CourtState;        // the court for this rally: as saved, else worked out from earlier rallies
   derived: CourtState;      // what the rotation says it should be
-  saved: boolean;           // a reviewer saved (tagged or edited) this rally's court
-  manual: boolean;          // …and changed it by hand (a sub or a fix), so differing from the rotation is expected
-  mismatch: boolean;        // saved court differs from the rotation (an earlier rally may have changed)
+  saved: boolean;           // the reviewer changed this rally's court by hand (a sub, a swap, a fix)
+  manual: boolean;          // same as saved (kept for readability at call sites)
+  mismatch: boolean;        // the hand-set court differs from what the rotation alone gives
   first: boolean;           // first rally: nothing to go on but the setup
   lastWinner: Team | null;  // who won the rally before (null = couldn't tell)
 }
 
+const handSet = (r?: Rally) => (r?.court?.manual ? r.court : undefined);
+
 /** The court for rallies[at] (the live rallies of a game, in time order). */
 export function courtFor(setup: CourtSetup, rallies: Rally[], at: number): CourtView {
   let k = at - 1;
-  while (k >= 0 && !rallies[k].court) k--;
-  let state: CourtState = courtOnly(k >= 0 ? rallies[k].court! : setup);
+  while (k >= 0 && !handSet(rallies[k])) k--;
+  let state: CourtState = k >= 0 ? courtOnly(rallies[k].court!) : startCourt(setup);
   let lastWinner: Team | null = null;
   for (let i = Math.max(k, 0); i < at; i++) {
     const step = advance(state, rallies[i]);
     state = step.next;
     lastWinner = step.winner;
   }
-  const sv = rallies[at]?.court;
-  const saved = sv && { ...courtOnly(sv), ...(sv.manual ? { manual: true } : {}) };
+  const sv = handSet(rallies[at]);
+  const saved = sv && { ...courtOnly(sv), manual: true };
   return {
     state: saved ?? state, derived: state, saved: !!saved, manual: !!saved?.manual,
     mismatch: !!saved && !sameCourt(saved, state), first: at === 0, lastWinner,

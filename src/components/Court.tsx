@@ -2,7 +2,13 @@
 // middle, subs on the left. Drag a name onto another to swap them (or tap one, then the other): roles stay
 // with the spots, so swapped players swap roles and a sub takes over the role of the player they replace.
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { TEAMS, roleAt, rotate, rotateBack, type CourtState, type Side, type Team } from '../lib/rotation';
+import { ROLE_NAMES, TEAMS, roleAt, rotate, rotateBack, rotationOf, type CourtState, type Side, type Team } from '../lib/rotation';
+
+/** Role label at spot i, telling the two outside hitters apart (OH1 / OH2). */
+const roleLabel = (s: Side, i: number) => {
+  const r = roleAt(s, i);
+  return r === 'OH' ? ROLE_NAMES[(i + rotationOf(s.roles)) % 6] : r;
+};
 
 // slot keys: "a.pos.0" (team A, position 1), "b.bench.2", "a.bench.end" (drop zone at the end of the bench)
 type Where = { t: Team; list: 'pos' | 'bench'; i: number };
@@ -128,7 +134,7 @@ export function Court({ c, name, onChange, onSlot, target, allowEmpty = false, c
           <span className="absolute bottom-1 right-1.5 text-[11px] font-semibold text-muted">B</span>
           {TEAMS.flatMap(t => c[t].pos.map((id, i) => (
             <div key={`${t}${i}`} className="absolute w-[31%] -translate-x-1/2 -translate-y-1/2" style={{ left: `${SPOTS[t][i][0]}%`, top: `${SPOTS[t][i][1]}%` }}>
-              {token(`${t}.pos.${i}`, id, i === 0 && t === c.serving ? '1 · 🏐 serve' : String(i + 1), roleAt(c[t], i))}
+              {token(`${t}.pos.${i}`, id, i === 0 && t === c.serving ? '1 · 🏐 serve' : String(i + 1), roleLabel(c[t], i))}
             </div>
           )))}
         </div>

@@ -11,12 +11,13 @@ import { computeStats, type StatKey } from '../lib/stats';
 import { buildModel, effectiveRatings, type RatingModel } from '../lib/engine';
 import { useEngineSettings } from '../lib/rated';
 import { createBackup } from '../lib/backups';
-import { CATEGORIES, overall } from '../lib/ratings';
+import { CATEGORIES, overall, type Position } from '../lib/ratings';
 import { logHistory, setGameRating, useGames, useHistory } from '../lib/games';
 import { addHighlight, useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
 import {
-  TEAMS, courtFor, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, server, setupReady,
+  ROLE_NAMES, START_ROLES, TEAMS, courtFor, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
+  server, setupReady, startCourt,
   type CourtSetup, type CourtState, type CourtView, type Team,
 } from '../lib/rotation';
 import { Court } from '../components/Court';
@@ -454,9 +455,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
     const updated = rallies.map(r => {
       if (r !== r0) return r;
       const { tag: _t, end: _e, touches: _ts, ...rest } = r;
-      // tagging a rally also saves the court it was played on, so later rallies rotate from it
-      const court = rest.court ?? (view && touches.length ? courtOnly(view.state) : undefined);
-      return { ...rest, touches, ...(end && end.i < touches.length ? { end } : {}), ...(court ? { court } : {}) };
+      return { ...rest, touches, ...(end && end.i < touches.length ? { end } : {}) };
     });
     const res = rallyResult(updated.find(r => r.s === r0.s)!);
     const who = (pid: string) => pid === 'guest' ? 'Guest' : players?.find(p => p.id === pid)?.name ?? pid;
@@ -467,8 +466,13 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   const setCourt = (c: CourtState, what: string, manual = true) => {
     if (!rally) return;
     const r0 = rally;
-    const court = { ...courtOnly(c), ...(manual ? { manual: true } : {}) };
-    commit(rallies.map(r => r === r0 ? { ...r, court } : r), r0.s, [`court:${r0.as ?? r0.s}`, `${label(r0)}: ${what}`]);
+    // only hand-made changes are stored; undoing one goes back to the worked-out court
+    const upd = (r: Rally): Rally => {
+      if (manual) return { ...r, court: { ...courtOnly(c), manual: true } };
+      const { court: _c, ...rest } = r;
+      return rest;
+    };
+    commit(rallies.map(r => r === r0 ? upd(r) : r), r0.s, [`court:${r0.as ?? r0.s}`, `${label(r0)}: ${what}`]);
   };
   const resume = () => { setAtSug(null); if (step) player.current?.playVideo(); };
   const skipSug = () => {
@@ -632,7 +636,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
               Rotation{view ? <>: 🏐 <b className="text-ink">{name(server(view.state))}</b> serves for Team {view.state.serving.toUpperCase()}</> : teamsReady ? '' : ': teams not set up yet'}
             </summary>
             <div className="mx-auto mt-2 max-w-[17rem]">
-              <RotationPanel view={view} setup={setup} name={name} onChange={setCourt} onSetup={() => setTeamsOpen(true)} />
+              <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} onChange={setCourt} onSetup={() => setTeamsOpen(true)} />
             </div>
           </details>
         )}
@@ -706,7 +710,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
       {mode === 'tag' && (
         <div className="hidden min-h-0 overflow-y-auto lg:block">
           <div className="rounded-xl border border-line bg-surface p-2">
-            <RotationPanel view={view} setup={setup} name={name} onChange={setCourt} onSetup={() => setTeamsOpen(true)} />
+            <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} onChange={setCourt} onSetup={() => setTeamsOpen(true)} />
           </div>
         </div>
       )}
@@ -715,8 +719,8 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
 }
 
 /** The live court for the rally being tagged: checked by the reviewer, fixed by dragging or rotating. */
-function RotationPanel({ view, setup, name, onChange, onSetup }: {
-  view: CourtView | null; setup: CourtSetup | null; name: (id?: string) => string;
+function RotationPanel({ view, setup, name, tagged, onChange, onSetup }: {
+  view: CourtView | null; setup: CourtSetup | null; name: (id?: string) => string; tagged: boolean;
   onChange: (c: CourtState, what: string, manual?: boolean) => void; onSetup: () => void;
 }) {
   if (!setupReady(setup)) return (
@@ -725,24 +729,22 @@ function RotationPanel({ view, setup, name, onChange, onSetup }: {
       <button onClick={onSetup} className="w-full rounded-lg bg-ball py-2 font-semibold text-bg">Set up teams</button>
     </div>
   );
-  const shown = view?.state ?? setup;
-  const warn = !!view?.mismatch && !view.manual;
+  const shown = view?.state ?? startCourt(setup);
   const status = !view ? 'Starting positions · pick a rally'
-    : warn ? '⚠ Differs from the rotation'
     : view.manual ? '✓ Changed by hand'
-    : view.saved ? '✓ Checked' : 'Auto: check it matches the video';
+    : tagged ? '✓ Tagged' : 'Auto: check it matches the video';
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2 px-0.5">
         <span className="text-sm font-semibold">Rotation</span>
-        <span className={`truncate text-[11px] ${warn ? 'text-ball' : view?.saved ? 'text-good' : 'text-muted'}`}>{status}</span>
+        <span className={`truncate text-[11px] ${view?.manual || tagged ? 'text-good' : 'text-muted'}`}>{status}</span>
       </div>
       <Court c={shown} name={id => name(id)} controls={!!view}
         onChange={view ? c => onChange(c, 'changed the court') : undefined} />
       {view?.mismatch && (
-        <button onClick={() => onChange(view.derived, 'reset the court to the rotation', false)}
-          className={`w-full rounded-md border px-2 py-1.5 text-xs ${warn ? 'border-ball/50 text-ball' : 'border-line text-muted'}`}>
-          {warn ? 'An earlier rally changed: use' : 'Undo changes: back to'} the rotation's version ({name(server(view.derived))} serving)
+        <button onClick={() => onChange(view.derived, 'undid the court changes', false)}
+          className="w-full rounded-md border border-line px-2 py-1.5 text-xs text-muted">
+          Undo changes: back to the rotation ({name(server(view.derived))} serving)
         </button>
       )}
       <p className="px-0.5 text-[11px] text-muted">
@@ -1144,10 +1146,35 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
                   className={`rounded-md border px-3 py-1 ${c.serving === t ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>Team {t.toUpperCase()}</button>
               ))}
             </div>
-            <p className="text-[11px] text-muted">
-              Roles go with the starting spot: 1 OH, 2 S, 3 MB, 4 OH, 5 OPP, 6 L. Players who swap spots mid-game swap
-              roles; a sub takes the role of whoever they replace.
-            </p>
+            <div className="space-y-1.5 rounded-lg border border-line p-2">
+              <p className="text-xs text-muted">
+                Roles at positions 1 and 2. Start of a set is OH1 at 1 and S at 2; if the clip starts mid-set, pick what's
+                there now and the other roles follow.
+              </p>
+              {TEAMS.map(t => {
+                const k = rotationOf(c[t].roles);
+                const opts = [0, 1, 2, 3, 4, 5].filter(j => START_ROLES[j] === START_ROLES[k]);  // OH1 / OH2 share a role
+                const setK = (j: number) => setC(x => tidy({ ...x, [t]: { ...x[t], roles: rolesAt(j) } }));
+                const sel = 'rounded-md border border-line bg-raised px-1.5 py-1 text-ink outline-none';
+                return (
+                  <div key={t} className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="w-14 text-muted">Team {t.toUpperCase()}</span>
+                    <span>1</span>
+                    <select className={sel} value={START_ROLES[k]} onChange={e => setK(START_ROLES.indexOf(e.target.value as Position))}>
+                      {['OH', 'S', 'MB', 'OPP', 'L'].map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                    <span>2</span>
+                    {opts.length > 1
+                      ? <select className={sel} value={k} onChange={e => setK(Number(e.target.value))}>
+                          {opts.map(j => <option key={j} value={j}>{ROLE_NAMES[(j + 1) % 6]}</option>)}
+                        </select>
+                      : <span className="rounded-md bg-raised px-2 py-1">{ROLE_NAMES[(k + 1) % 6]}</span>}
+                    {k === 0 && <span className="text-muted">start of a set</span>}
+                  </div>
+                );
+              })}
+              <p className="text-[11px] text-muted">Players who swap spots mid-game swap roles; a sub takes the role of whoever they replace.</p>
+            </div>
             {TEAMS.some(t => c[t].bench.length > 0) && (
               <div className="space-y-1.5">
                 <p className="text-xs text-muted">Extra middle blocker (comes on for the libero in the front row automatically)</p>
@@ -1163,6 +1190,14 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
                     <span className="text-muted">{c[t].mb ? '' : 'none'}</span>
                   </div>
                 ))}
+                {TEAMS.map(t => {
+                  const i = c[t].roles.indexOf('L');
+                  return c[t].mb && i <= 3 && c[t].pos[i] ? (
+                    <p key={t} className="text-[11px] text-ball">
+                      Team {t.toUpperCase()}: the libero's spot is at position {i + 1}, so {name(c[t].mb!)} plays there and {name(c[t].pos[i])} starts on the bench.
+                    </p>
+                  ) : null;
+                })}
                 <p className="text-[11px] text-muted">Other subs: drag them in while tagging.</p>
               </div>
             )}
@@ -1173,7 +1208,7 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
             Fill all six positions for both teams (use Guest for guests).
           </p>
         )}
-        <p className="mt-3 text-[11px] text-muted">Rallies already tagged keep the court saved with them.</p>
+        <p className="mt-3 text-[11px] text-muted">Changes here apply to every rally; subs and swaps you made by hand while tagging are kept from their rally on.</p>
         <div className="mt-2 flex gap-2">
           <button onClick={save} disabled={busy || !ok} className="flex-1 rounded-lg bg-ball py-2.5 font-semibold text-bg disabled:opacity-40">
             {busy ? 'Saving…' : 'Save teams'}
