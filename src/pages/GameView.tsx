@@ -267,7 +267,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
               </span>
               {detailOpts.map((o, i) => (
                 <button key={o.label} onClick={o.set}
-                  className={`min-w-0 flex-1 truncate rounded-md border px-1 py-1 text-[11px] font-semibold ${o.on ? 'border-court bg-court/25 text-ink' : 'border-line text-muted'}`}>
+                  className={`min-w-0 flex-1 rounded-md border px-1 py-1 text-[11px] font-semibold leading-tight ${o.on ? 'border-court bg-court/25 text-ink' : 'border-line text-muted'}`}>
                   {o.label}<Kbd k={DETAIL_KEYS[i].toUpperCase()} />
                 </button>
               ))}
@@ -557,7 +557,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   };
 
   // the rally list: in the middle column, or under the video while tagging on a wide screen
-  const rallyList = (ref: RefObject<HTMLOListElement | null>, cls: string) => (
+  const rallyList = (ref: RefObject<HTMLOListElement | null>, cls: string, compact = false) => (
     <ol ref={ref} className={`${cls} divide-y divide-line overflow-y-auto overscroll-contain rounded-xl border border-line bg-surface`}>
       {list.map((r, i) => {
         const prevEnd = i ? list[i - 1].e : 0;
@@ -574,7 +574,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
         return [gap, (
         <li key={`${r.s}-${i}`} data-i={i}>
           <button onClick={() => go(i)}
-            className={`flex w-full items-center gap-3 px-4 py-3 text-left ${i === cur ? 'bg-raised shadow-[inset_3px_0_0] shadow-ball' : ''} ${r.st === 'bad' ? 'opacity-50' : ''}`}>
+            className={`flex w-full items-center gap-3 px-4 ${compact ? 'py-2' : 'py-3'} text-left ${i === cur ? 'bg-raised shadow-[inset_3px_0_0] shadow-ball' : ''} ${r.st === 'bad' ? 'opacity-50' : ''}`}>
             <span className="w-7 font-display text-muted">{i + 1}</span>
             <span className="flex-1 tabular-nums">{fmtTime(r.s)} – {fmtTime(r.e)} <span className="text-xs text-muted">({Math.round(r.e - r.s)}s)</span>
               {mode !== 'watch' && mode !== 'box' && r.by && <span className="ml-1 text-[10px] text-muted">· by {r.by}</span>}
@@ -614,7 +614,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   return (
     <div className={`flex h-[calc(100dvh-11.5rem-env(safe-area-inset-top))] flex-col gap-3 lg:grid lg:gap-5 ${mode === 'tag'
       ? 'lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,1fr)_minmax(250px,0.8fr)]' : 'lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]'}`}>
-      <div className={`shrink-0 space-y-2 ${mode === 'tag' ? 'lg:flex lg:min-h-0 lg:flex-col lg:gap-2 lg:space-y-0' : 'lg:overflow-y-auto'}`}>
+      <div className={`shrink-0 space-y-2 ${mode === 'tag' ? 'lg:flex lg:min-h-0 lg:flex-col lg:gap-2 lg:space-y-0 lg:overflow-y-auto' : 'lg:overflow-y-auto'}`}>
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <Link to="/games" className="text-sm text-muted">← Games</Link>
@@ -661,7 +661,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
         ) : mode === 'tag' ? (
           <>
             <p className="hidden text-xs text-muted lg:block">Tag while it plays: tap names (or press 1–9, 0, G) as each touch happens. Space = play/pause.</p>
-            {rallyList(listEl2, 'hidden min-h-0 flex-1 lg:block')}
+            {rallyList(listEl2, 'hidden min-h-[10.75rem] flex-1 lg:block', true)}
           </>
         ) : (
           <div className="space-y-2">

@@ -21,7 +21,7 @@ export const STAT_LABELS: Record<StatKey, string> = {
   block: 'Blocks', blockpt: 'Points',
   dig: 'Digs',
   free: 'Free balls',
-  tip: 'Tips', tipkill: 'Tip kills', roll: 'Roll shots', rollkill: 'Roll kills',
+  tip: 'Tips', tipkill: 'Tip kills', roll: 'Placements', rollkill: 'Placement kills',
   pass3: 'Perfect', pass2: 'OK', pass1: 'Poor',
   set3: 'Good', set2: 'OK', set1: 'Poor',
   oerr: 'Other errors',

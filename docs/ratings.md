@@ -103,7 +103,7 @@ A rally counts only if it is not marked "Not a rally", has touches tagged, and h
 - A player is never credited for their own touch: no assist for setting yourself, and no "blocked" for blocking your own attack.
 - Guests are left out of both ratings and the benchmark. Their touches still affect credit: for example, a guest's serve still makes the next receive error count as forced (0.5).
 - **Free ball** (an easy ball sent over) counts as a touch, so it counts for Consistency, and an error on it counts as an error. It is **not an attack**, so it doesn't affect hitting efficiency, and it can't force an error.
-- **Attack type** (spike / tip / roll shot) doesn't change any rating. Every attack still counts for Spiking. Types are for stats only: tips, roll shots, and kills from each.
+- **Attack type** (spike / tip / smart placement) doesn't change any rating. Every attack still counts for Spiking. Types are for stats only: tips, smart placements, and kills from each.
 - Old point-only tags (one tag per rally) appear in the stats lists but are **ignored by the ratings**, because they have no attempt counts.
 
 ## 5. Applying a game (admin)

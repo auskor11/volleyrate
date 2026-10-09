@@ -52,7 +52,7 @@ export type Skill = keyof typeof SKILLS;
 export interface Touch { p: string; k: Skill; t: number; q?: Grade; a?: AttackType }
 export type Grade = 1 | 2 | 3;
 export type AttackType = 'tip' | 'roll';
-export const ATTACK_TYPES: Record<'spike' | AttackType, string> = { spike: 'Spike', tip: 'Tip', roll: 'Roll shot' };
+export const ATTACK_TYPES: Record<'spike' | AttackType, string> = { spike: 'Spike', tip: 'Tip', roll: 'Smart placement' };
 /** Skills that can be graded 3 / 2 / 1. */
 export const GRADED: Skill[] = ['receive', 'dig', 'set'];
 export const GRADE_LABELS: Record<'pass' | 'set', Record<Grade, string>> = {
