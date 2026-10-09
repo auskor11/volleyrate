@@ -17,7 +17,7 @@ import { addHighlight, useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
 import {
   BACK_COURT_PLAYERS, ROLE_NAMES, START_ROLES, TEAMS, courtFor, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
-  server, setupReady, startCourt,
+  scoreSheet, server, setupReady, startCourt,
   type CourtSetup, type CourtState, type CourtView, type Team,
 } from '../lib/rotation';
 import { Court } from '../components/Court';
@@ -353,6 +353,11 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   const setup = gameSetup(game);
   const teamsReady = setupReady(setup);
   const view = mode === 'tag' && rally && teamsReady ? courtFor(setup, list, cur) : null;
+  // running score from the tags (live rallies in order); needs the teams to know who won each rally
+  const liveRallies = rallies.filter(r => r.st !== 'bad');
+  const sheet = teamsReady ? scoreSheet(setup, liveRallies) : null;
+  const scoreAt = new Map(liveRallies.map((r, i) => [r, sheet?.[i]]));
+  const notCounted = (upTo: number) => (sheet ?? []).slice(0, upTo).filter(x => !x.winner).length;
   const handled = (t: number) =>
     (rally?.touches ?? []).some(x => Math.abs(x.t - t) < 0.15) || (rally?.sk ?? []).some(x => Math.abs(x - t) < 0.05);
   const pendingIdx = sugs.findIndex(t => !handled(t));
@@ -576,8 +581,8 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
           <button onClick={() => go(i)}
             className={`flex w-full items-center gap-3 px-4 ${compact ? 'py-2' : 'py-3'} text-left ${i === cur ? 'bg-raised shadow-[inset_3px_0_0] shadow-ball' : ''} ${r.st === 'bad' ? 'opacity-50' : ''}`}>
             <span className="w-7 font-display text-muted">{i + 1}</span>
-            <span className="flex-1 tabular-nums">{fmtTime(r.s)} – {fmtTime(r.e)} <span className="text-xs text-muted">({Math.round(r.e - r.s)}s)</span>
-              {mode !== 'watch' && mode !== 'box' && r.by && <span className="ml-1 text-[10px] text-muted">· by {r.by}</span>}
+            <span className={`flex-1 tabular-nums ${compact ? 'min-w-0 truncate whitespace-nowrap' : ''}`}>{fmtTime(r.s)} – {fmtTime(r.e)} <span className="text-xs text-muted">({Math.round(r.e - r.s)}s)</span>
+              {!compact && mode !== 'watch' && mode !== 'box' && r.by && <span className="ml-1 text-[10px] text-muted">· by {r.by}</span>}
               {starred(r).length > 0 && (
                 <span className="ml-1 text-xs text-ball" title={`Highlight for ${starred(r).map(h => players?.find(p => p.id === h.playerId)?.name ?? h.playerId).join(', ')}`}>★</span>
               )}
@@ -593,6 +598,11 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
               if (mode === 'tag') return <span className="text-xs text-muted">{r.touches?.length ? `${r.touches.length} touches…` : 'untagged'}</span>;
               return null;
             })()}
+            {mode !== 'review' && scoreAt.get(r)?.winner && (
+              <span className="w-11 shrink-0 text-right text-xs tabular-nums text-muted" title="Score after this rally (Team A – Team B)">
+                {scoreAt.get(r)!.after.a}–{scoreAt.get(r)!.after.b}
+              </span>
+            )}
           </button>
         </li>
         )];
@@ -727,10 +737,11 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
         {mode === 'tag' && (
           <details className="shrink-0 rounded-xl border border-line bg-surface px-2 py-1.5 lg:hidden">
             <summary className="cursor-pointer text-xs text-muted">
-              Rotation{view ? <>: 🏐 <b className="text-ink">{name(server(view.state))}</b> serves for Team {view.state.serving.toUpperCase()}</> : teamsReady ? '' : ': teams not set up yet'}
+              Rotation{view ? <>{rally && scoreAt.get(rally) && <> · <b className="text-ink">A {scoreAt.get(rally)!.before.a}–{scoreAt.get(rally)!.before.b} B</b></>}: 🏐 <b className="text-ink">{name(server(view.state))}</b> serves for Team {view.state.serving.toUpperCase()}</> : teamsReady ? '' : ': teams not set up yet'}
             </summary>
             <div className="mx-auto mt-2 max-w-[17rem]">
-              <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} onChange={setCourt} onSetup={() => setTeamsOpen(true)} />
+              <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} onChange={setCourt} onSetup={() => setTeamsOpen(true)}
+              score={rally ? scoreAt.get(rally)?.before : undefined} missed={rally ? notCounted(liveRallies.indexOf(rally)) : 0} />
             </div>
           </details>
         )}
@@ -744,6 +755,15 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
 
         {mode === 'box' && (
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+            {sheet && sheet.length > 0 && (
+              <div className="rounded-xl border border-line bg-surface px-3 py-2 text-center">
+                <div className="font-display text-2xl font-bold tabular-nums">Team A {sheet[sheet.length - 1].after.a} – {sheet[sheet.length - 1].after.b} Team B</div>
+                <p className="text-[11px] text-muted">
+                  Score from the tags{setup?.score && (setup.score.a || setup.score.b) ? `, starting at ${setup.score.a}–${setup.score.b}` : ''}
+                  {notCounted(sheet.length) ? ` · ${notCounted(sheet.length)} untagged ${notCounted(sheet.length) === 1 ? 'rally' : 'rallies'} not counted` : ''}
+                </p>
+              </div>
+            )}
             <BoxScore game={{ ...game, rallies }} players={players ?? []} />
             {canDelete && <RatingChanges game={game} />}
           </div>
@@ -755,7 +775,8 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
       {mode === 'tag' && (
         <div className="hidden min-h-0 overflow-y-auto lg:block">
           <div className="rounded-xl border border-line bg-surface p-2">
-            <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} onChange={setCourt} onSetup={() => setTeamsOpen(true)} />
+            <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} onChange={setCourt} onSetup={() => setTeamsOpen(true)}
+              score={rally ? scoreAt.get(rally)?.before : undefined} missed={rally ? notCounted(liveRallies.indexOf(rally)) : 0} />
           </div>
         </div>
       )}
@@ -764,8 +785,9 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
 }
 
 /** The live court for the rally being tagged: checked by the reviewer, fixed by dragging or rotating. */
-function RotationPanel({ view, setup, name, tagged, onChange, onSetup }: {
+function RotationPanel({ view, setup, name, tagged, onChange, onSetup, score, missed }: {
   view: CourtView | null; setup: CourtSetup | null; name: (id?: string) => string; tagged: boolean;
+  score?: { a: number; b: number }; missed: number;  // score before this rally; earlier rallies left out of it
   onChange: (c: CourtState, what: string, manual?: boolean) => void; onSetup: () => void;
 }) {
   if (!setupReady(setup)) return (
@@ -784,6 +806,18 @@ function RotationPanel({ view, setup, name, tagged, onChange, onSetup }: {
         <span className="text-sm font-semibold">Rotation</span>
         <span className={`truncate text-[11px] ${view?.manual || tagged ? 'text-good' : 'text-muted'}`}>{status}</span>
       </div>
+      {view && score && (
+        <div className="rounded-lg bg-raised px-2 py-1.5 text-center">
+          <div className="font-display text-xl font-bold tabular-nums">
+            <span className={shown.serving === 'a' ? 'text-ball' : ''}>A {score.a}</span>
+            <span className="mx-2 text-muted">–</span>
+            <span className={shown.serving === 'b' ? 'text-ball' : ''}>{score.b} B</span>
+          </div>
+          <div className="text-[10px] text-muted">
+            Score before this rally{missed > 0 ? ` · ${missed} earlier ${missed === 1 ? 'rally' : 'rallies'} not tagged, not counted` : ''}
+          </div>
+        </div>
+      )}
       <Court c={shown} name={id => name(id)} controls={!!view}
         onChange={view ? c => onChange(c, 'changed the court') : undefined} />
       {view?.mismatch && (
@@ -834,7 +868,7 @@ function AddSuggestions({ gameId }: { gameId: string }) {
 type C = Record<StatKey, number>;
 const hit = (c: C) => (c.attack ? `${Math.round(((c.kill - c.aerr - c.blocked) / c.attack) * 100)}%` : '–');
 const BOX: [string, string, (c: C) => number | string][] = [
-  ['PTS', 'Points: kills + aces + block points', c => c.kill + c.ace + c.blockpt],
+  ['PTS', 'Points: kills + aces + block points + set-over points', c => c.kill + c.ace + c.blockpt + c.setpt],
   ['K', 'Kills', c => c.kill],
   ['ATT', 'Attacks', c => c.attack],
   ['AE', 'Attack errors', c => c.aerr],
@@ -843,6 +877,7 @@ const BOX: [string, string, (c: C) => number | string][] = [
   ['FB', 'Free balls sent over', c => c.free],
   ['SET', 'Sets', c => c.set],
   ['A', 'Assists', c => c.assist],
+  ['SO', 'Set-over points: sets that went over and won the point', c => c.setpt],
   ['SQ', 'Set quality: average grade (good 3, OK 2, poor 1)', c => avgGrade(c.set3, c.set2, c.set1)],
   ['SA', 'Aces', c => c.ace],
   ['SV', 'Serves', c => c.serve],
@@ -897,7 +932,7 @@ function BoxScore({ game, players }: { game: Game; players: Player[] }) {
         </tbody>
       </table>
       <p className="px-3 py-2 text-[11px] leading-relaxed text-muted">
-        PTS points · K kills · ATT attacks · AE attack errors · BLKD times blocked · HIT hitting efficiency · FB free balls · SET sets · A assists ·
+        PTS points · K kills · ATT attacks · AE attack errors · BLKD times blocked · HIT hitting efficiency · FB free balls · SET sets · A assists · SO set-over points ·
         SQ set quality (1–3) · SA aces · SV serves · SE serve errors · REC receives · RE reception errors · DIG digs · PASS pass rating (1–3) ·
         BLK block touches · BS block points · ERR all errors
       </p>
@@ -1174,7 +1209,7 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
             <h2 className="font-semibold">Starting teams</h2>
             <p className="mt-0.5 text-sm text-muted">Who stands where at the first rally. Positions go 1 → 6 anticlockwise from back right; 1 serves.</p>
           </div>
-          {prev && <button className="shrink-0 rounded-md border border-line px-2 py-1 text-xs" onClick={() => { const x = tidy(gameSetup(prev)!); setC(x); setTarget(nextSpot(x, 'a')); }}>Copy from {prev.title}</button>}
+          {prev && <button className="shrink-0 rounded-md border border-line px-2 py-1 text-xs" onClick={() => { const { score: _s, ...rest } = gameSetup(prev)!; const x = tidy(rest); setC(x); setTarget(nextSpot(x, 'a')); }}>Copy from {prev.title}</button>}
         </div>
         <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
           <div className="mx-auto w-full max-w-[15rem]">
@@ -1200,6 +1235,17 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
               {TEAMS.map(t => (
                 <button key={t} onClick={() => setC({ ...c, serving: t })}
                   className={`rounded-md border px-3 py-1 ${c.serving === t ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>Team {t.toUpperCase()}</button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted">Score at this clip's first rally</span>
+              {TEAMS.map(t => (
+                <label key={t} className="flex items-center gap-1">
+                  <span className="text-xs text-muted">{t.toUpperCase()}</span>
+                  <input type="number" min={0} max={99} inputMode="numeric" value={c.score?.[t] ?? 0}
+                    onChange={e => { const v = Math.max(0, Math.min(99, Number(e.target.value) || 0)); setC(x => ({ ...x, score: { a: x.score?.a ?? 0, b: x.score?.b ?? 0, [t]: v } })); }}
+                    className="w-14 rounded-md border border-line bg-raised px-2 py-1 text-ink outline-none focus:border-ball" />
+                </label>
               ))}
             </div>
             <div className="space-y-1.5 rounded-lg border border-line p-2">

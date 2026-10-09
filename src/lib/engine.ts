@@ -35,7 +35,7 @@ export const FORCED_ERROR_WEIGHT = 0.5;
 export const METRICS = {
   spiking: { attr: 'spiking', label: 'Hitting efficiency', rate: 0.5, k: 25, graded: false, what: '(kills − attack errors − times blocked) ÷ attacks' },
   serving: { attr: 'serving', label: 'Serve efficiency', rate: 0.5, k: 25, graded: false, what: '(aces − serve errors) ÷ serves' },
-  setting: { attr: 'setting', label: 'Set efficiency', rate: 0.4, k: 25, graded: false, what: '(assists − set errors) ÷ sets' },
+  setting: { attr: 'setting', label: 'Set efficiency', rate: 0.4, k: 25, graded: false, what: '(assists + set-over points − set errors) ÷ sets' },
   setQuality: { attr: 'setting', label: 'Set quality', rate: 0.3, k: 25, graded: true, what: 'average grade of sets that weren\'t errors (good 3, OK 2, poor 1)' },
   receiving: { attr: 'receiving', label: 'Ball control', rate: 1.0, k: 25, graded: false, what: 'receives + digs without an error ÷ receives + digs' },
   passQuality: { attr: 'receiving', label: 'Pass quality', rate: 0.3, k: 25, graded: true, what: 'average grade of receives + digs that weren\'t errors (perfect 3, OK 2, poor 1)' },
@@ -51,7 +51,7 @@ interface Counts {
   touches: number; errors: number;
   attacks: number; kills: number; aerr: number; blocked: number;
   serves: number; aces: number; serr: number;
-  sets: number; assists: number; setErr: number;
+  sets: number; assists: number; setErr: number; setPts: number;  // setPts: sets that went over and won the point
   ctrl: number; ctrlErr: number;          // receives + digs
   blocks: number; blockPts: number; blockErr: number;
   passQ: number; passN: number;           // sum and count of grades on non-error receives + digs
@@ -59,7 +59,7 @@ interface Counts {
 }
 const zero = (): Counts => ({
   touches: 0, errors: 0, attacks: 0, kills: 0, aerr: 0, blocked: 0, serves: 0, aces: 0, serr: 0,
-  sets: 0, assists: 0, setErr: 0, ctrl: 0, ctrlErr: 0, blocks: 0, blockPts: 0, blockErr: 0,
+  sets: 0, assists: 0, setErr: 0, setPts: 0, ctrl: 0, ctrlErr: 0, blocks: 0, blockPts: 0, blockErr: 0,
   passQ: 0, passN: 0, setQ: 0, setN: 0,
 });
 
@@ -68,7 +68,7 @@ function gameCounts(g: Game): Record<string, Counts> {
   const c = (p: string) => (out[p] ??= zero());
   const ATT: Partial<Record<Skill, keyof Counts>> = { attack: 'attacks', serve: 'serves', set: 'sets', block: 'blocks', receive: 'ctrl', dig: 'ctrl' };
   const ERR: Partial<Record<Skill, keyof Counts>> = { attack: 'aerr', serve: 'serr', set: 'setErr', block: 'blockErr', receive: 'ctrlErr', dig: 'ctrlErr' };
-  const PT: Partial<Record<Skill, keyof Counts>> = { attack: 'kills', serve: 'aces', block: 'blockPts' };
+  const PT: Partial<Record<Skill, keyof Counts>> = { attack: 'kills', serve: 'aces', block: 'blockPts', set: 'setPts' };
   for (const r of g.rallies) {
     if (r.st === 'bad' || !r.touches?.length || !r.end) continue;
     const ts = r.touches;
@@ -109,7 +109,7 @@ function metric(k: MetricKey, c: Counts): [number, number] {
   switch (k) {
     case 'spiking': return [(c.kills - c.aerr - c.blocked) / c.attacks, c.attacks];
     case 'serving': return [(c.aces - c.serr) / c.serves, c.serves];
-    case 'setting': return [(c.assists - c.setErr) / c.sets, c.sets];
+    case 'setting': return [(c.assists + c.setPts - c.setErr) / c.sets, c.sets];
     case 'setQuality': return [(c.setQ / c.setN - 1) / 2, c.setN];
     case 'passQuality': return [(c.passQ / c.passN - 1) / 2, c.passN];
     case 'receiving': return [1 - c.ctrlErr / c.ctrl, c.ctrl];

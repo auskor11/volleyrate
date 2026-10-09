@@ -68,14 +68,16 @@ export function nextSkill(touches: Touch[]): Skill {
   return ({ serve: 'receive', receive: 'set', dig: 'set', set: 'attack', attack: 'dig', block: 'dig', free: 'receive', other: 'set' } as const)[last];
 }
 
-// A defensive error right after the other side's serve / attack / block also scores for that touch:
-// serve → receive/dig error = ace; attack → receive/dig/block error = kill; block → receive/dig error = block point.
+// A defensive error right after the other side's serve / attack / block / set-over also scores for that
+// touch: serve → receive/dig error = ace; attack → receive/dig/block error = kill; block → receive/dig
+// error = block point; a set that goes over → receive/dig/block error = set-over point for the setter.
 const FORCED: Partial<Record<Skill, Skill[]>> = {
   serve: ['receive', 'dig'],
   attack: ['receive', 'dig', 'block'],
   block: ['receive', 'dig'],
+  set: ['receive', 'dig', 'block'],
 };
-const POINT_LABEL: Partial<Record<Skill, string>> = { serve: 'Ace', attack: 'Kill', block: 'Block' };
+const POINT_LABEL: Partial<Record<Skill, string>> = { serve: 'Ace', attack: 'Kill', block: 'Block', set: 'Set over' };
 
 /** Index of the touch that earned the point when the rally ended on a forced defensive error, else -1. */
 export function forcedBy(touches: Touch[], end: RallyEnd): number {

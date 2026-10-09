@@ -33,7 +33,7 @@ Only six attributes can be measured from tagged touches. Setting and Receiving h
 |---|---|---|---|---|
 | Spiking | Hitting efficiency | (kills − attack errors − times blocked) ÷ attacks | 0.5 | 25 |
 | Serving | Serve efficiency | (aces − serve errors) ÷ serves | 0.5 | 25 |
-| Setting | Set efficiency | (assists − set errors) ÷ sets | 0.4 | 25 |
+| Setting | Set efficiency | (assists + set-over points − set errors) ÷ sets | 0.4 | 25 |
 | Setting | Set quality *(graded)* | (average grade of non-error sets − 1) ÷ 2 | 0.3 | 25 |
 | Receiving | Ball control | 1 − (receive + dig errors) ÷ (receives + digs) | 1.0 | 25 |
 | Receiving | Pass quality *(graded)* | (average grade of non-error receives + digs − 1) ÷ 2 | 0.3 | 25 |
@@ -84,7 +84,7 @@ A rally counts only if it is not marked "Not a rally", has touches tagged, and h
   - receive or dig → ball control
 
 - **Rally ends on a point**, credited to the touch that ended it:
-  - Attack → kill; serve → ace; block → block point.
+  - Attack → kill; serve → ace; block → block point; a set that goes over and lands → **set-over point** for the setter.
   - If the attack came straight after a set by a **different** player, that setter gets an **assist**.
   - If a block point came straight after an attack by a **different** player, that attacker is **blocked** (counts against hitting efficiency).
 
@@ -97,6 +97,7 @@ A rally counts only if it is not marked "Not a rally", has touches tagged, and h
     | Serve | receive / dig | ace |
     | Attack | receive / dig / block | kill (plus the assist rule above) |
     | Block | receive / dig | block point |
+    | Set that goes over | receive / dig / block | set-over point (counts like an assist in set efficiency) |
 
   - A forced **receive or dig** error counts **0.5** against the defender's Receiving and Consistency (`FORCED_ERROR_WEIGHT`). A forced block error counts in full.
 

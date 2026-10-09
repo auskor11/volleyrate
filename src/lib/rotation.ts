@@ -49,7 +49,8 @@ export interface Side {
 /** Players who normally stay in the back court; preselected as a six-player team's libero-type player. */
 export const BACK_COURT_PLAYERS = ['darius'];
 export interface CourtState { a: Side; b: Side; serving: Team; manual?: boolean }  // manual: changed by hand (a sub, a fix)
-export type CourtSetup = CourtState;
+/** The court at the first rally, plus the score then (a clip may start mid-set). */
+export interface CourtSetup extends CourtState { score?: { a: number; b: number } }
 
 export const emptySide = (): Side => ({ pos: ['', '', '', '', '', ''], roles: [...START_ROLES], bench: [] });
 
@@ -169,6 +170,25 @@ function advance(c: CourtState, r: Rally): { next: CourtState; winner: Team | nu
   const winner = rallyWinner(cur, r);
   if (!winner || winner === cur.serving) return { next: cur, winner };
   return { next: { ...cur, [winner]: backCourtSwap(liberoSwap(rotate(cur[winner]))), serving: winner }, winner };
+}
+
+export interface ScoreRow { before: { a: number; b: number }; after: { a: number; b: number }; winner: Team | null }
+
+/**
+ * Running score: who won each rally (from its tags and the court that rally was played on) and the score
+ * before and after it. Rallies whose result can't be told (untagged) don't change the score.
+ */
+export function scoreSheet(setup: CourtSetup, rallies: Rally[]): ScoreRow[] {
+  let state = startCourt(setup);
+  const sc = { a: setup.score?.a ?? 0, b: setup.score?.b ?? 0 };
+  return rallies.map(r => {
+    const cur = handSet(r) ? courtOnly(r.court!) : state;
+    const { next, winner } = advance(cur, r);
+    const before = { ...sc };
+    if (winner) sc[winner]++;
+    state = next;
+    return { before, after: { ...sc }, winner };
+  });
 }
 
 export const courtOnly = (c: CourtState): CourtState => ({ a: normSide(c.a), b: normSide(c.b), serving: c.serving });

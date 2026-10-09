@@ -3,7 +3,7 @@ import { forcedBy, type Game, type Rally, type Skill, type Touch } from './games
 export type StatKey =
   | 'serve' | 'ace' | 'serr'
   | 'receive' | 'rerr'
-  | 'set' | 'assist'
+  | 'set' | 'assist' | 'setpt'
   | 'attack' | 'kill' | 'aerr' | 'blocked'
   | 'block' | 'blockpt'
   | 'dig'
@@ -16,7 +16,7 @@ export type StatKey =
 export const STAT_LABELS: Record<StatKey, string> = {
   serve: 'Serves', ace: 'Aces', serr: 'Errors',
   receive: 'Receives', rerr: 'Errors',
-  set: 'Sets', assist: 'Assists',
+  set: 'Sets', assist: 'Assists', setpt: 'Set-over points',
   attack: 'Attacks', kill: 'Kills', aerr: 'Errors', blocked: 'Got blocked',
   block: 'Blocks', blockpt: 'Points',
   dig: 'Digs',
@@ -32,7 +32,7 @@ export const STAT_GROUPS: { label: string; stats: { k: StatKey; good: boolean | 
   { label: 'Serving', stats: [{ k: 'serve', good: null }, { k: 'ace', good: true }, { k: 'serr', good: false }] },
   { label: 'Receiving', stats: [{ k: 'receive', good: null }, { k: 'rerr', good: false }] },
   { label: 'Passes', stats: [{ k: 'pass3', good: true }, { k: 'pass2', good: null }, { k: 'pass1', good: false }] },
-  { label: 'Setting', stats: [{ k: 'set', good: null }, { k: 'assist', good: true }] },
+  { label: 'Setting', stats: [{ k: 'set', good: null }, { k: 'assist', good: true }, { k: 'setpt', good: true }] },
   { label: 'Set quality', stats: [{ k: 'set3', good: true }, { k: 'set2', good: null }, { k: 'set1', good: false }] },
   { label: 'Attacking', stats: [{ k: 'attack', good: null }, { k: 'kill', good: true }, { k: 'aerr', good: false }, { k: 'blocked', good: false }] },
   { label: 'Attack types', stats: [{ k: 'tip', good: null }, { k: 'tipkill', good: true }, { k: 'roll', good: null }, { k: 'rollkill', good: true }] },
@@ -63,7 +63,7 @@ function detail(t: Touch): StatKey[] {
   if (t.k === 'attack' && t.a) out.push(t.a);
   return out;
 }
-const POINT: Partial<Record<Skill, StatKey>> = { serve: 'ace', attack: 'kill', block: 'blockpt' };
+const POINT: Partial<Record<Skill, StatKey>> = { serve: 'ace', attack: 'kill', block: 'blockpt', set: 'setpt' };
 const ERROR: Partial<Record<Skill, StatKey>> = { serve: 'serr', receive: 'rerr', attack: 'aerr' };
 
 /** Every tagged touch / result credited to players (guests are skipped). */
