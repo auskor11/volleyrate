@@ -8,7 +8,7 @@ import { useRatedPlayers } from '../lib/rated';
 import { BLOCK_CREDIT, METRICS, experience, metricsFor, type RatingModel } from '../lib/engine';
 import { fmtTime, useGames } from '../lib/games';
 import { STAT_GROUPS, STAT_LABELS, avgGrade, computeStats, ratio, taggedGames, type StatKey } from '../lib/stats';
-import { CATEGORIES, POSITIONS, categoryScore, overall, type Position } from '../lib/ratings';
+import { CATEGORIES, POSITIONS, categoryScore, categoryWeights, overall, type Position } from '../lib/ratings';
 
 export function Players() {
   const { players, error } = useRatedPlayers();
@@ -59,13 +59,19 @@ export function PlayerDetail() {
 
 
       {CATEGORIES.filter(c => c.attrs.length > 1).map(c => {
-        const s = categoryScore(p.ratings, c.key);
+        const s = categoryScore(p.ratings, c.key, p.positions[0]);
+        const cw = categoryWeights(c.key, p.positions[0]);
         return (
           <section key={c.key} className="rounded-xl border border-line bg-surface p-4">
             <div className="mb-1 flex items-baseline justify-between">
               <h2 className="font-display text-lg font-semibold">{c.label}</h2>
               <span className="font-display text-2xl font-bold">{s === null ? '–' : Math.round(s)}</span>
             </div>
+            {cw && (
+              <p className="mb-1 text-[11px] text-muted">
+                As a {POSITIONS[p.positions[0]].toLowerCase()}: {c.attrs.map(([k, label]) => `${cw[k] ?? 0}% ${label.toLowerCase()}`).join(', ')}
+              </p>
+            )}
             {c.attrs.map(([k, label]) => <Attr key={k} k={k} label={label} p={p} model={model} />)}
           </section>
         );

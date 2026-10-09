@@ -37,7 +37,7 @@ export function PlayerCard({ player, size = 'md' }: { player: Player & { base?: 
       </div>
       <div className={`mt-2 grid grid-cols-3 gap-x-3 gap-y-0.5 font-display ${big ? 'text-base' : 'text-xs'}`}>
         {CATEGORIES.map(c => {
-          const s = categoryScore(player.ratings, c.key);
+          const s = categoryScore(player.ratings, c.key, pos);
           return (
             <div key={c.key} className="flex justify-between gap-1">
               <span className="opacity-60">{c.short}</span>

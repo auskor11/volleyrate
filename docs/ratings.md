@@ -181,4 +181,4 @@ Each position weights the 11 attributes differently (each row sums to 100%):
 - Silver: 70–79
 - Bronze: below 70
 
-**Category scores** (Attack, Defence, Game Intelligence…) are plain averages of their attributes.
+**Category scores** (Attack, Defence, Game Intelligence…) are plain averages of their attributes, except a **libero's Defence**, which is 85% Receiving and 15% Blocking. This uses the player's main position.

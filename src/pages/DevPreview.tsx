@@ -31,7 +31,7 @@ export function DevPreview() {
           <section key={c.key} className="rounded-xl border border-line bg-surface p-4">
             <div className="mb-1 flex items-baseline justify-between">
               <h2 className="font-display text-lg font-semibold">{c.label}</h2>
-              <span className="font-display text-2xl font-bold">{Math.round(categoryScore(p.ratings, c.key)!)}</span>
+              <span className="font-display text-2xl font-bold">{Math.round(categoryScore(p.ratings, c.key, p.positions[0])!)}</span>
             </div>
             {c.attrs.map(([k, label]) => <AttrBar key={k} label={label} value={p.ratings[k]} />)}
           </section>

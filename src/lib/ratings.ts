@@ -35,11 +35,31 @@ const WEIGHTS: Record<Position, Record<string, number>> = {
 };
 
 /** Average of a category's rated attributes, or null if none are rated. */
-export function categoryScore(r: Ratings, key: CategoryKey): number | null {
+// A category is the plain average of its attributes, except where a position leans on one of them:
+// a libero's Defence is mostly receiving (liberos rarely block).
+const CATEGORY_WEIGHTS: Partial<Record<Position, Partial<Record<CategoryKey, Record<string, number>>>>> = {
+  L: { defence: { receiving: 0.85, blocking: 0.15 } },
+};
+
+/** A category's score (weighted for the player's main position where set), or null if none are rated. */
+export function categoryScore(r: Ratings, key: CategoryKey, pos?: Position): number | null {
   const cat = CATEGORIES.find(c => c.key === key)!;
-  const vals = cat.attrs.map(([k]) => r[k]).filter((v): v is number => typeof v === 'number');
-  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  const w = (pos && CATEGORY_WEIGHTS[pos]?.[key]) ?? {};
+  let sum = 0, wsum = 0;
+  for (const [k] of cat.attrs) {
+    const v = r[k];
+    if (typeof v !== 'number') continue;
+    const wt = w[k] ?? 1 / cat.attrs.length;
+    sum += v * wt; wsum += wt;
+  }
+  return wsum ? sum / wsum : null;
 }
+
+/** How a position weights a category's attributes, as whole percentages (null = an equal split). */
+export const categoryWeights = (key: CategoryKey, pos?: Position): Record<string, number> | null => {
+  const w = pos && CATEGORY_WEIGHTS[pos]?.[key];
+  return w ? Object.fromEntries(Object.entries(w).map(([k, v]) => [k, Math.round(v * 100)])) : null;
+};
 
 /** Position-weighted overall; unrated attributes are left out and the rest re-weighted. */
 export function overall(r: Ratings, pos: Position): number | null {
