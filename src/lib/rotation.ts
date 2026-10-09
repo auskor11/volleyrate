@@ -34,9 +34,9 @@ export const ROLE_NAMES = ['OH1', 'S', 'MB', 'OH2', 'OPP', 'L'];
 
 /** Spot roles k rotations into a set (k = 0: start of a set). Position 1 has ROLE_NAMES[k], 2 has ROLE_NAMES[k + 1]. */
 export const rolesAt = (k: number): Position[] => START_ROLES.map((_, i) => START_ROLES[(i + k) % 6]);
-/** Which rotation a set of spot roles is (0–5). */
+/** Which rotation a set of spot roles is (0–5), or -1 if players have swapped spots keeping their roles. */
 export const rotationOf = (roles: Position[]): number =>
-  [0, 1, 2, 3, 4, 5].find(k => rolesAt(k).every((r, i) => r === roles[i])) ?? 0;
+  [0, 1, 2, 3, 4, 5].find(k => rolesAt(k).every((r, i) => r === roles[i])) ?? -1;
 
 /**
  * One team. pos[0] = position 1 … pos[5] = position 6 ('' = nobody yet); roles[i] = role of the spot at

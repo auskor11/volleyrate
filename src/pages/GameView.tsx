@@ -819,7 +819,7 @@ function RotationPanel({ view, setup, name, tagged, onChange, onSetup, score, mi
         </div>
       )}
       <Court c={shown} name={id => name(id)} controls={!!view}
-        onChange={view ? c => onChange(c, 'changed the court') : undefined} />
+        onChange={view ? (c, what) => onChange(c, what ?? 'changed the court') : undefined} />
       {view?.mismatch && (
         <button onClick={() => onChange(view.derived, 'undid the court changes', false)}
           className="w-full rounded-md border border-line px-2 py-1.5 text-xs text-muted">
@@ -1270,7 +1270,7 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
                 there now and the other roles follow.
               </p>
               {TEAMS.map(t => {
-                const k = rotationOf(c[t].roles);
+                const k = Math.max(0, rotationOf(c[t].roles));
                 const opts = [0, 1, 2, 3, 4, 5].filter(j => START_ROLES[j] === START_ROLES[k]);  // OH1 / OH2 share a role
                 const setK = (j: number) => setC(x => tidy({ ...x, [t]: { ...x[t], roles: rolesAt(j) } }));
                 const sel = 'rounded-md border border-line bg-raised px-1.5 py-1 text-ink outline-none';

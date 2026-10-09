@@ -1,13 +1,14 @@
 // Volleyball court with both teams' rotations: Team A on the top half, Team B on the bottom, net in the
 // middle, subs on the left. Drag a name onto another to swap them (or tap one, then the other): roles stay
 // with the spots, so swapped players swap roles and a sub takes over the role of the player they replace.
+// "Keep roles" swaps instead move the players with their roles (for teams that stood in the wrong spots).
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { ROLE_NAMES, TEAMS, roleAt, rotate, rotateBack, rotationOf, type CourtState, type Side, type Team } from '../lib/rotation';
 
 /** Role label at spot i, telling the two outside hitters apart (OH1 / OH2). */
 const roleLabel = (s: Side, i: number) => {
-  const r = roleAt(s, i);
-  return r === 'OH' ? ROLE_NAMES[(i + rotationOf(s.roles)) % 6] : r;
+  const r = roleAt(s, i), k = rotationOf(s.roles);
+  return r === 'OH' && k >= 0 ? ROLE_NAMES[(i + k) % 6] : r;  // OH1 / OH2 while the spots are in set order
 };
 
 // slot keys: "a.pos.0" (team A, position 1), "b.bench.2", "a.bench.end" (drop zone at the end of the bench)
@@ -24,8 +25,11 @@ const SPOTS: Record<Team, [number, number][]> = {
   b: [[83, 87], [83, 62], [50, 62], [17, 62], [17, 87], [50, 87]],
 };
 
-/** Swap the players at two slots (or move one to the end of a bench). */
-export function moveSlot(c: CourtState, from: string, to: string, allowEmpty: boolean): CourtState {
+/**
+ * Swap the players at two slots (or move one to the end of a bench). keepRoles: two players on the same
+ * team's court take their roles with them (otherwise each takes the role of the spot they move into).
+ */
+export function moveSlot(c: CourtState, from: string, to: string, allowEmpty: boolean, keepRoles = false): CourtState {
   if (from === to) return c;
   const a = parse(from), b = parse(to);
   const pa = get(c, a), pb = get(c, b);
@@ -38,6 +42,11 @@ export function moveSlot(c: CourtState, from: string, to: string, allowEmpty: bo
   };
   put(a, pb);
   put(b, pa);
+  if (keepRoles && a.list === 'pos' && b.list === 'pos' && a.t === b.t) {
+    const roles = [...n[a.t].roles];
+    [roles[a.i], roles[b.i]] = [roles[b.i], roles[a.i]];
+    n[a.t] = { ...n[a.t], roles };
+  }
   for (const t of TEAMS) n[t].bench = n[t].bench.filter(Boolean);
   return n;
 }
@@ -45,20 +54,23 @@ export function moveSlot(c: CourtState, from: string, to: string, allowEmpty: bo
 export function Court({ c, name, onChange, onSlot, target, allowEmpty = false, controls = false }: {
   c: CourtState;
   name: (id: string) => string;
-  onChange?: (c: CourtState) => void;
+  onChange?: (c: CourtState, what?: string) => void;  // what: a short description for the edit history
   onSlot?: (key: string) => void;   // setup: a tap picks the slot to fill instead of selecting it
   target?: string | null;           // highlighted slot (setup: the next one to fill)
   allowEmpty?: boolean;             // setup: spots may be empty
   controls?: boolean;               // rotate buttons + serving team toggle
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [keepRoles, setKeepRoles] = useState(false);
   const [ghost, setGhost] = useState<{ key: string; x: number; y: number } | null>(null);
   const press = useRef<{ key: string; x: number; y: number; moved: boolean } | null>(null);
   const editable = !!onChange;
 
   const drop = (from: string, to: string) => {
-    const n = moveSlot(c, from, to, allowEmpty);
-    if (n !== c) onChange?.(n);
+    const kept = keepRoles && from.split('.')[1] === 'pos' && to.split('.')[1] === 'pos' && from[0] === to[0];
+    const n = moveSlot(c, from, to, allowEmpty, kept);
+    const pa = get(c, parse(from)), pb = get(c, parse(to));
+    if (n !== c) onChange?.(n, `swapped ${name(pa) || 'an empty spot'} and ${name(pb) || 'an empty spot'}${kept ? ' (kept their roles)' : ''}`);
   };
   const down = (e: ReactPointerEvent, key: string) => {
     if (!editable && !onSlot) return;
@@ -141,6 +153,14 @@ export function Court({ c, name, onChange, onSlot, target, allowEmpty = false, c
       </div>
       {controls && editable && (
         <div className="mt-1.5 grid grid-cols-[auto_1fr_1fr] items-center gap-1 text-xs">
+          <span className="text-muted">Swaps</span>
+          {[false, true].map(keep => (
+            <button key={String(keep)} onClick={() => setKeepRoles(keep)}
+              title={keep ? 'Players keep their roles when they swap spots (e.g. the team stood in the wrong positions)' : 'Players take the role of the spot they move into'}
+              className={`rounded-md border py-1 ${keepRoles === keep ? 'border-court bg-court/25 text-ink' : 'border-line text-muted'}`}>
+              {keep ? 'Keep roles' : 'Change roles'}
+            </button>
+          ))}
           <span className="text-muted">Rotate</span>
           {TEAMS.map(t => (
             <div key={t} className="flex gap-1">
