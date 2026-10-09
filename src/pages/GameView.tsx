@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { usePlayers, type Player } from '../lib/data';
@@ -337,6 +337,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   const [saveState, setSaveState] = useState<'' | 'saving' | 'saved' | 'error'>('');
   const playerEl = useRef<HTMLDivElement>(null);
   const listEl = useRef<HTMLOListElement>(null);
+  const listEl2 = useRef<HTMLOListElement>(null);  // the copy under the video (Tag tab, wide screens)
   const player = useRef<YTPlayer | null>(null);
   const dirty = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -542,7 +543,8 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
 
   // keep the playing rally visible in the list (e.g. during Play all)
   useEffect(() => {
-    listEl.current?.querySelector(`[data-i="${cur}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    for (const el of [listEl.current, listEl2.current])
+      el?.querySelector(`[data-i="${cur}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [cur]);
 
   const unchecked = rallies.filter(r => r.st === 'auto').length;
@@ -554,11 +556,65 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
     if (confirm(`Delete "${game.title}" and all its rallies? This can't be undone.`)) { await deleteGame(game.id); nav('/games'); }
   };
 
+  // the rally list: in the middle column, or under the video while tagging on a wide screen
+  const rallyList = (ref: RefObject<HTMLOListElement | null>, cls: string) => (
+    <ol ref={ref} className={`${cls} divide-y divide-line overflow-y-auto overscroll-contain rounded-xl border border-line bg-surface`}>
+      {list.map((r, i) => {
+        const prevEnd = i ? list[i - 1].e : 0;
+        const gap = mode === 'review' && r.s - prevEnd >= GAP_MIN ? (
+          <li key={`gap-${i}`}>
+            <button onClick={() => seekFree(prevEnd)}
+              className="flex w-full items-center gap-3 border-l-2 border-dashed border-line px-4 py-2 text-left text-sm text-muted hover:bg-raised">
+              <span className="w-7 text-center">⋯</span>
+              <span className="flex-1 tabular-nums">No rally {fmtTime(prevEnd)} – {fmtTime(r.s)} <span className="text-xs">({Math.round(r.s - prevEnd)}s)</span></span>
+              <span className="text-xs">▶ check</span>
+            </button>
+          </li>
+        ) : null;
+        return [gap, (
+        <li key={`${r.s}-${i}`} data-i={i}>
+          <button onClick={() => go(i)}
+            className={`flex w-full items-center gap-3 px-4 py-3 text-left ${i === cur ? 'bg-raised shadow-[inset_3px_0_0] shadow-ball' : ''} ${r.st === 'bad' ? 'opacity-50' : ''}`}>
+            <span className="w-7 font-display text-muted">{i + 1}</span>
+            <span className="flex-1 tabular-nums">{fmtTime(r.s)} – {fmtTime(r.e)} <span className="text-xs text-muted">({Math.round(r.e - r.s)}s)</span>
+              {mode !== 'watch' && mode !== 'box' && r.by && <span className="ml-1 text-[10px] text-muted">· by {r.by}</span>}
+              {starred(r).length > 0 && (
+                <span className="ml-1 text-xs text-ball" title={`Highlight for ${starred(r).map(h => players?.find(p => p.id === h.playerId)?.name ?? h.playerId).join(', ')}`}>★</span>
+              )}
+            </span>
+            {mode === 'review' && <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS[r.st].cls}`}>{STATUS[r.st].label}</span>}
+            {mode !== 'review' && (() => {
+              const res = rallyResult(r);
+              if (res) return (
+                <span className={`truncate rounded-full px-2 py-0.5 text-xs ${res.good ? 'bg-good/20 text-good' : 'bg-bad/20 text-bad'}`}>
+                  {res.label} · {name(res.who)}{res.assist && <span className="opacity-70"> (assist {name(res.assist)})</span>}{res.note && <span className="opacity-70"> ({name(res.noteWho)} {res.note})</span>}
+                </span>
+              );
+              if (mode === 'tag') return <span className="text-xs text-muted">{r.touches?.length ? `${r.touches.length} touches…` : 'untagged'}</span>;
+              return null;
+            })()}
+          </button>
+        </li>
+        )];
+      })}
+      {mode === 'review' && list.length > 0 && game.duration - list[list.length - 1].e >= GAP_MIN && (
+        <li>
+          <button onClick={() => seekFree(list[list.length - 1].e)}
+            className="flex w-full items-center gap-3 border-l-2 border-dashed border-line px-4 py-2 text-left text-sm text-muted hover:bg-raised">
+            <span className="w-7 text-center">⋯</span>
+            <span className="flex-1 tabular-nums">No rally {fmtTime(list[list.length - 1].e)} – end</span>
+            <span className="text-xs">▶ check</span>
+          </button>
+        </li>
+      )}
+    </ol>
+  );
+
   // Fills the screen: phone = video on top + list scrolling below; wide screen = video left, list right.
   return (
     <div className={`flex h-[calc(100dvh-11.5rem-env(safe-area-inset-top))] flex-col gap-3 lg:grid lg:gap-5 ${mode === 'tag'
       ? 'lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,1fr)_minmax(250px,0.8fr)]' : 'lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]'}`}>
-      <div className="shrink-0 space-y-2 lg:overflow-y-auto">
+      <div className={`shrink-0 space-y-2 ${mode === 'tag' ? 'lg:flex lg:min-h-0 lg:flex-col lg:gap-2 lg:space-y-0' : 'lg:overflow-y-auto'}`}>
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <Link to="/games" className="text-sm text-muted">← Games</Link>
@@ -603,7 +659,10 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
             </button>
           </div>
         ) : mode === 'tag' ? (
-          <p className="hidden text-xs text-muted lg:block">Tag while it plays: tap names (or press 1–9, 0, G) as each touch happens. Space = play/pause.</p>
+          <>
+            <p className="hidden text-xs text-muted lg:block">Tag while it plays: tap names (or press 1–9, 0, G) as each touch happens. Space = play/pause.</p>
+            {rallyList(listEl2, 'hidden min-h-0 flex-1 lg:block')}
+          </>
         ) : (
           <div className="space-y-2">
             <div className="grid grid-cols-2 gap-2">
@@ -690,56 +749,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
           </div>
         )}
 
-        <ol ref={listEl} className={`${mode === 'box' ? 'hidden' : ''} min-h-40 flex-1 divide-y divide-line overflow-y-auto overscroll-contain rounded-xl border border-line bg-surface`}>
-          {list.map((r, i) => {
-            const prevEnd = i ? list[i - 1].e : 0;
-            const gap = mode === 'review' && r.s - prevEnd >= GAP_MIN ? (
-              <li key={`gap-${i}`}>
-                <button onClick={() => seekFree(prevEnd)}
-                  className="flex w-full items-center gap-3 border-l-2 border-dashed border-line px-4 py-2 text-left text-sm text-muted hover:bg-raised">
-                  <span className="w-7 text-center">⋯</span>
-                  <span className="flex-1 tabular-nums">No rally {fmtTime(prevEnd)} – {fmtTime(r.s)} <span className="text-xs">({Math.round(r.s - prevEnd)}s)</span></span>
-                  <span className="text-xs">▶ check</span>
-                </button>
-              </li>
-            ) : null;
-            return [gap, (
-            <li key={`${r.s}-${i}`} data-i={i}>
-              <button onClick={() => go(i)}
-                className={`flex w-full items-center gap-3 px-4 py-3 text-left ${i === cur ? 'bg-raised shadow-[inset_3px_0_0] shadow-ball' : ''} ${r.st === 'bad' ? 'opacity-50' : ''}`}>
-                <span className="w-7 font-display text-muted">{i + 1}</span>
-                <span className="flex-1 tabular-nums">{fmtTime(r.s)} – {fmtTime(r.e)} <span className="text-xs text-muted">({Math.round(r.e - r.s)}s)</span>
-                  {mode !== 'watch' && mode !== 'box' && r.by && <span className="ml-1 text-[10px] text-muted">· by {r.by}</span>}
-                  {starred(r).length > 0 && (
-                    <span className="ml-1 text-xs text-ball" title={`Highlight for ${starred(r).map(h => players?.find(p => p.id === h.playerId)?.name ?? h.playerId).join(', ')}`}>★</span>
-                  )}
-                </span>
-                {mode === 'review' && <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS[r.st].cls}`}>{STATUS[r.st].label}</span>}
-                {mode !== 'review' && (() => {
-                  const res = rallyResult(r);
-                  if (res) return (
-                    <span className={`truncate rounded-full px-2 py-0.5 text-xs ${res.good ? 'bg-good/20 text-good' : 'bg-bad/20 text-bad'}`}>
-                      {res.label} · {name(res.who)}{res.assist && <span className="opacity-70"> (assist {name(res.assist)})</span>}{res.note && <span className="opacity-70"> ({name(res.noteWho)} {res.note})</span>}
-                    </span>
-                  );
-                  if (mode === 'tag') return <span className="text-xs text-muted">{r.touches?.length ? `${r.touches.length} touches…` : 'untagged'}</span>;
-                  return null;
-                })()}
-              </button>
-            </li>
-            )];
-          })}
-          {mode === 'review' && list.length > 0 && game.duration - list[list.length - 1].e >= GAP_MIN && (
-            <li>
-              <button onClick={() => seekFree(list[list.length - 1].e)}
-                className="flex w-full items-center gap-3 border-l-2 border-dashed border-line px-4 py-2 text-left text-sm text-muted hover:bg-raised">
-                <span className="w-7 text-center">⋯</span>
-                <span className="flex-1 tabular-nums">No rally {fmtTime(list[list.length - 1].e)} – end</span>
-                <span className="text-xs">▶ check</span>
-              </button>
-            </li>
-          )}
-        </ol>
+        {rallyList(listEl, `${mode === 'box' ? 'hidden' : ''} ${mode === 'tag' ? 'lg:hidden' : ''} min-h-40 flex-1`)}
       </div>
 
       {mode === 'tag' && (
