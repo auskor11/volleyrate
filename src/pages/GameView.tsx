@@ -16,7 +16,7 @@ import { logHistory, setGameRating, useGames, useHistory } from '../lib/games';
 import { addHighlight, useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
 import {
-  ROLE_NAMES, START_ROLES, TEAMS, courtFor, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
+  BACK_COURT_PLAYERS, ROLE_NAMES, START_ROLES, TEAMS, courtFor, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
   server, setupReady, startCourt,
   type CourtSetup, type CourtState, type CourtView, type Team,
 } from '../lib/rotation';
@@ -1093,12 +1093,19 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
   // the extra middle must be on the bench; nobody starts subbed in for the libero
   const tidy = (x: CourtSetup): CourtSetup => {
     const fix = (sd: CourtSetup['a']) => {
-      const { mb, libero: _l, ...rest } = sd;
-      return mb && sd.bench.includes(mb) ? { ...rest, mb } : rest;
+      const { mb, libero: _l, l6, l6front, ...rest } = sd;
+      if (sd.bench.length) return mb && sd.bench.includes(mb) ? { ...rest, mb } : rest;
+      if (!sd.pos.every(Boolean)) return rest;  // decide once all six are placed
+      // six players, no subs: pick the libero-type player (Darius by default) if he's on the team
+      const pick = l6 !== undefined && (l6 === '' || sd.pos.includes(l6)) ? l6
+        : sd.pos.find(p => BACK_COURT_PLAYERS.includes(p)) ?? '';
+      return { ...rest, l6: pick, ...(pick && l6front ? { l6front: true } : {}) };
     };
     return { ...x, a: fix(x.a), b: fix(x.b) };
   };
   const setMb = (t: Team, id: string | null) => setC(x => tidy({ ...x, [t]: { ...x[t], mb: id ?? undefined } }));
+  const setL6 = (t: Team, id: string, front: boolean) => setC(x => tidy({ ...x, [t]: { ...x[t], l6: id, l6front: front } }));
+  const sixes = TEAMS.filter(t => !c[t].bench.length && c[t].pos.every(Boolean));
   const ok = setupReady(c);
 
   const save = async () => {
@@ -1175,6 +1182,35 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
               })}
               <p className="text-[11px] text-muted">Players who swap spots mid-game swap roles; a sub takes the role of whoever they replace.</p>
             </div>
+            {sixes.length > 0 && (
+              <div className="space-y-1.5 rounded-lg border border-line p-2">
+                <p className="text-xs text-muted">Six players, no subs: no libero, so that spot plays middle (two MBs).</p>
+                {sixes.map(t => (
+                  <div key={t} className="space-y-1 text-xs">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="w-14 text-muted">Team {t.toUpperCase()}</span>
+                      <span className="text-muted">Back-court player</span>
+                      <select value={c[t].l6 ?? ''} onChange={e => setL6(t, e.target.value, !!c[t].l6front)}
+                        className="rounded-md border border-line bg-raised px-1.5 py-1 text-ink outline-none">
+                        <option value="">None</option>
+                        {c[t].pos.filter(p => p && p !== 'guest').map(p => <option key={p} value={p}>{name(p)}</option>)}
+                      </select>
+                    </div>
+                    {c[t].l6 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pl-[3.875rem]">
+                        <span className="text-muted">Plays front court?</span>
+                        {[false, true].map(f => (
+                          <button key={String(f)} onClick={() => setL6(t, c[t].l6!, f)}
+                            className={`rounded-md border px-2 py-1 ${!!c[t].l6front === f ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>
+                            {f ? 'Yes (L/MB)' : 'No: swaps with the other middle'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             {TEAMS.some(t => c[t].bench.length > 0) && (
               <div className="space-y-1.5">
                 <p className="text-xs text-muted">Extra middle blocker (comes on for the libero in the front row automatically)</p>
