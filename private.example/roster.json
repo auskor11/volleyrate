@@ -1,0 +1,4 @@
+[
+  { "name": "Alex", "number": 7, "positions": ["Setter"], "email": "alex@example.com" },
+  { "name": "Sam", "number": 12, "positions": ["Outside Hitter", "Opposite"], "email": "sam@example.com" }
+]

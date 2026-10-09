@@ -1,0 +1,40 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# roster with personal emails: never commit or deploy
+private/
+.firebase/
+.env*
+!.env.example
+
+# rally-lab: local video, caches and experiments stay off git
+rally-lab/.venv/
+rally-lab/videos/
+rally-lab/cache/
+rally-lab/cache_old/
+rally-lab/scratch/
+rally-lab/review/
+__pycache__/
+*.pyc

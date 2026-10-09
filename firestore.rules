@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function email() {
+      return request.auth.token.email.lower();
+    }
+    function memberPath() {
+      return /databases/$(database)/documents/members/$(email());
+    }
+    // Bootstrap admins, stored as SHA-256 hashes of their lowercase emails (same list as
+    // OWNER_HASHES in src/lib/auth.tsx) so the repo doesn't publish the addresses.
+    function isOwner() {
+      return signedIn() && hashing.sha256(email()).toHexString().lower() in [
+        '7d99c35cf45491553a917b4658ff4c2d36e7e3268b6886e47480ab41bb1ad19d',
+        '225af8a3e6040d8d88b6d773d016a5ed74c673827a3454c337f43d7e3ff236b5'
+      ];
+    }
+    function isAdmin() {
+      return isOwner() || (signedIn() && exists(memberPath()) && get(memberPath()).data.get('role', 'player') == 'admin');
+    }
+    function isMember() {
+      return isAdmin() || (signedIn() && exists(memberPath()));
+    }
+
+    // Team list: doc id = lowercase Google email -> { playerId, role }
+    match /members/{memberEmail} {
+      allow get: if signedIn() && (memberEmail == email() || isAdmin());
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /players/{playerId} {
+      allow read: if isMember();
+      allow write: if isAdmin();
+    }
+
+    // Highlights: whole rallies bookmarked to a player's profile. Anyone on the team can add one
+    // (as themselves); the person who added it, the player it belongs to, or an admin can remove it.
+    match /highlights/{id} {
+      allow read: if isMember();
+      allow create: if isMember() && request.resource.data.by == email();
+      allow delete: if isAdmin() || resource.data.by == email()
+        || (exists(memberPath()) && get(memberPath()).data.get('playerId', '') == resource.data.playerId);
+    }
+
+    // Rating backups (Admin → Ratings → Backups)
+    match /ratingBackups/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    // App settings, e.g. config/detector = the active rally-detector model. Admins change them.
+    match /config/{key} {
+      allow read: if isMember();
+      allow write: if isAdmin();
+    }
+
+    // Games: anyone on the team can add one and review its rallies; only admins delete.
+    match /games/{gameId} {
+      allow read, create, update: if isMember();
+      allow delete: if isAdmin();
+
+      // who changed what: anyone on the team can add entries, nobody can edit or remove them
+      match /history/{entryId} {
+        allow read, create: if isMember();
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

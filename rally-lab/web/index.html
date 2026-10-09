@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rally Detector</title>
+<style>
+  :root { --bg:#111418; --panel:#1b2027; --line:#2c333d; --text:#e8ecf1; --muted:#8a95a3;
+          --ok:#3fb68b; --bad:#e5534b; --acc:#f2c94c; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 -apple-system, system-ui, sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 20px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:14px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 10px; }
+  .check { display:flex; gap:8px; align-items:baseline; }
+  .check b.ok { color:var(--ok); } .check b.bad { color:var(--bad); }
+  label.pick { display:block; border:2px dashed var(--line); border-radius:10px; padding:22px; text-align:center; cursor:pointer; }
+  label.pick:hover { border-color:var(--muted); }
+  input[type=file] { display:none; }
+  .bar { height:10px; background:var(--line); border-radius:5px; overflow:hidden; margin:10px 0 6px; }
+  .bar > div { height:100%; width:0; background:var(--acc); transition:width .3s; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px; }
+  .stat { background:var(--bg); border-radius:8px; padding:10px; }
+  .stat .k { color:var(--muted); font-size:12px; }
+  .stat .v { font-size:20px; font-variant-numeric:tabular-nums; }
+  .muted { color:var(--muted); font-size:13px; }
+  .err { color:var(--bad); white-space:pre-wrap; font:13px ui-monospace, monospace; }
+  ol { padding-left:22px; margin:0; columns:2; font-variant-numeric:tabular-nums; font-size:14px; }
+  @media (max-width:520px) { ol { columns:1; } }
+  button { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px 12px; font:inherit; cursor:pointer; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Rally detector · browser test</h1>
+  <p class="sub">Finds rallies in a game video on this device. Nothing is uploaded.</p>
+
+  <div class="card">
+    <h2>Device check</h2>
+    <div id="checks"></div>
+  </div>
+
+  <div class="card">
+    <h2>Video</h2>
+    <label class="pick" id="pickLabel">Choose a game video (MP4)
+      <input type="file" id="file" accept="video/mp4,video/quicktime,.mp4,.mov">
+    </label>
+    <label class="muted" style="display:flex;gap:8px;align-items:center;margin-top:10px">
+      <input type="checkbox" id="quick" style="display:inline"> Quick test: only the first 5 minutes</label>
+    <div id="info" class="muted" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card" id="progCard" hidden>
+    <h2>Progress</h2>
+    <div class="bar"><div id="barFill"></div></div>
+    <div class="stats">
+      <div class="stat"><div class="k">Video processed</div><div class="v" id="pPos">–</div></div>
+      <div class="stat"><div class="k">Speed</div><div class="v" id="pSpeed">–</div></div>
+      <div class="stat"><div class="k">Time left</div><div class="v" id="pEta">–</div></div>
+    </div>
+    <p class="muted" id="pNote">Keep this page open and the screen on until it finishes.</p>
+  </div>
+
+  <div class="card" id="resCard" hidden>
+    <h2>Result</h2>
+    <div class="stats" id="resStats"></div>
+    <p id="cmp" class="muted"></p>
+    <p><button id="dl">Download result (JSON)</button></p>
+    <ol id="list"></ol>
+  </div>
+
+  <div class="err" id="err"></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const fmt = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+let model = null, result = null, fileName = null;
+
+async function checks() {
+  const rows = [];
+  const add = (ok, text) => rows.push(`<div class="check"><b class="${ok ? 'ok' : 'bad'}">${ok ? '✓' : '✗'}</b><span>${text}</span></div>`);
+  add(window.isSecureContext, 'Secure page (needed for video decoding)');
+  const wc = 'VideoDecoder' in window;
+  add(wc, 'WebCodecs video decoding');
+  if (wc) {
+    const hevc = await VideoDecoder.isConfigSupported({ codec: 'hvc1.2.4.L123.B0', codedWidth: 1280, codedHeight: 720 }).catch(() => ({}));
+    add(!!hevc.supported, 'HEVC (iPhone 10-bit) video');
+    const avc = await VideoDecoder.isConfigSupported({ codec: 'avc1.640028', codedWidth: 1920, codedHeight: 1080 }).catch(() => ({}));
+    add(!!avc.supported, 'H.264 video');
+  }
+  const ad = 'AudioDecoder' in window;
+  rows.push(`<div class="check"><b class="${ad ? 'ok' : 'ok'}">${ad ? '✓' : '~'}</b><span>${ad ? 'WebCodecs audio decoding' : 'Audio: using fallback decoder (fine)'}</span></div>`);
+  let gl2 = false;
+  try { gl2 = typeof OffscreenCanvas !== 'undefined' && !!new OffscreenCanvas(1, 1).getContext('webgl2'); } catch {}
+  add(gl2, gl2 ? 'Fast GPU frame reading (WebGL2)' : 'WebGL2 missing: slower frame reading will be used');
+  $('checks').innerHTML = rows.join('') + `<div class="muted" style="margin-top:6px">${navigator.userAgent}</div>`;
+}
+
+let wakeLock = null;
+async function start(source, opts = {}) {
+  $('err').textContent = ''; $('resCard').hidden = true; $('progCard').hidden = false;
+  // keep the screen on while processing (a locked phone pauses the page)
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
+  model = model || await fetch('model.json').then(r => r.json());
+  const w = new Worker('worker.js');
+  w.onmessage = e => e.data.type === 'adts' ? decodeAdts(w, e.data) : handle(e.data);
+  w.onerror = e => { $('err').textContent = e.message; };
+  w.postMessage({ source, model, opts });
+}
+
+// Older Safari has no WebCodecs AudioDecoder: the worker sends ADTS chunks, we decode them here.
+let adtsQueue = Promise.resolve();
+function decodeAdts(w, m) {
+  adtsQueue = adtsQueue.then(async () => {
+    let pcm = new Float32Array(0);
+    try {
+      const ctx = new OfflineAudioContext(1, 1, 48000);
+      const buf = await ctx.decodeAudioData(m.data);
+      const n = buf.length, ch = buf.numberOfChannels;
+      const mono = new Float32Array(n);
+      for (let c = 0; c < ch; c++) { const d = buf.getChannelData(c); for (let i = 0; i < n; i++) mono[i] += d[i] / ch; }
+      const drop = Math.round(m.drop * buf.sampleRate / 48000);
+      pcm = mono.subarray(Math.min(drop, n)).slice();
+      if (buf.sampleRate !== 48000) $('err').textContent = `Note: audio decoded at ${buf.sampleRate} Hz`;
+    } catch (err) {
+      $('err').textContent = 'Audio decode failed: ' + err;
+    }
+    w.postMessage({ type: 'pcm', seq: m.seq, pcm }, [pcm.buffer]);
+  });
+}
+
+function handle(m) {
+  if (m.type === 'info') {
+    if (m.name) {
+      fileName = m.name;
+      $('info').textContent = `${m.name} · ${(m.size / 1e9).toFixed(2)} GB · ${fmt(m.duration)} · ${m.width}×${m.height} ${m.codec}${m.audio ? '' : ' · no audio!'}`;
+    }
+    if (m.audioPath) $('info').textContent += ` · audio: ${m.audioPath}`;
+    if (m.mode) $('info').textContent += ` · frames: ${m.frameFormat || 'opaque'} (${m.mode}${m.mode === 'canvas' ? ' – fallback, colours may differ' : ''}) ${m.colour.matrix}${m.colour.full ? ' full' : ''}`;
+  } else if (m.type === 'progress') {
+    const frac = Math.min(1, m.videoTime / m.duration);
+    $('barFill').style.width = (frac * 100).toFixed(1) + '%';
+    $('pPos').textContent = `${fmt(m.videoTime)} / ${fmt(m.duration)}`;
+    const speed = m.videoTime / m.elapsed;
+    $('pSpeed').textContent = speed.toFixed(1) + '× real time';
+    $('pEta').textContent = speed > 0 ? fmt((m.duration - m.videoTime) / speed) : '–';
+  } else if (m.type === 'done') {
+    result = m;
+    try { wakeLock && wakeLock.release(); } catch {}
+    $('barFill').style.width = '100%';
+    $('pEta').textContent = 'done'; $('pNote').textContent = '';
+    showResult(m);
+  } else if (m.type === 'error') {
+    $('err').textContent = m.message;
+  }
+}
+
+async function showResult(m) {
+  $('resCard').hidden = false;
+  const stat = (k, v) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  const processed = m.processed || m.duration;
+  $('resStats').innerHTML = stat('Rallies', m.rallies.length) + stat('Took', fmt(m.elapsed)) +
+    stat('Speed', (processed / m.elapsed).toFixed(1) + '× real time');
+  $('list').innerHTML = m.rallies.map(([a, b]) => `<li>${fmt(a)} – ${fmt(b)}</li>`).join('');
+  const stem = (fileName || '').replace(/\.[^.]+$/, '');
+  // compare with the Python detector when running from the rally-lab server
+  try {
+    const py = await fetch(`../cache/${encodeURIComponent(stem)}/rallies.json`).then(r => r.ok ? r.json() : null);
+    if (py) $('cmp').textContent = compare(m.rallies, py.rallies);
+  } catch {}
+  try {
+    const tag = new URLSearchParams(location.search).get('tag');
+    await fetch(`/save/${encodeURIComponent(stem)}${tag ? '?' + tag : ''}`, { method: 'POST', body: JSON.stringify(m) });
+  } catch {}
+}
+
+function compare(js, py) {
+  const ov = (a, b) => Math.max(0, Math.min(a[1], b[1]) - Math.max(a[0], b[0]));
+  let matched = 0, ds = 0, de = 0;
+  const used = new Set();
+  for (const p of py) {
+    let best = -1, bo = 0;
+    js.forEach((j, k) => { const o = ov(p, j); if (o > bo && !used.has(k)) { bo = o; best = k; } });
+    if (best >= 0) { used.add(best); matched++; ds += Math.abs(js[best][0] - p[0]); de += Math.abs(js[best][1] - p[1]); }
+  }
+  return `Compared with the Python detector: ${matched} of ${py.length} Python rallies matched, ` +
+    `${js.length - matched} extra in browser · avg start diff ${(ds / Math.max(1, matched)).toFixed(2)}s, end diff ${(de / Math.max(1, matched)).toFixed(2)}s`;
+}
+
+$('file').onchange = e => { const f = e.target.files[0]; if (f) start(f, { maxSeconds: $('quick').checked ? 300 : undefined }); };
+$('dl').onclick = () => {
+  const { candidates, ...rest } = result;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(rest, null, 1)], { type: 'application/json' }));
+  a.download = (fileName || 'video').replace(/\.[^.]+$/, '') + ' rallies.json';
+  a.click();
+};
+
+checks();
+const testUrl = new URLSearchParams(location.search).get('video');
+const qs = new URLSearchParams(location.search);
+if (testUrl) start({ url: new URL(testUrl, location.href).href },
+                   { mode: qs.get('mode') || undefined, audio: qs.get('audio') || undefined, audioOnly: qs.has('audioOnly'),
+                     maxSeconds: Number(qs.get('max')) || undefined });
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "source": "Team poll (self-votes excluded), rating = 35 + 5 x average",
+  "players": {
+    "alex": { "spiking": 60, "setting": 75, "serving": 66, "blocking": 58, "receiving": 64, "positioning": 70, "adaptability": 68, "reading": 72, "consistency": 69, "physical": 63, "technique": 71 },
+    "sam": { "spiking": 74, "setting": 58, "serving": 70, "blocking": 66, "receiving": 69, "positioning": 65, "adaptability": 64, "reading": 63, "consistency": 62, "physical": 76, "technique": 67 }
+  }
+}

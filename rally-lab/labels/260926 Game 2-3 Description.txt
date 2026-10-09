@@ -1,0 +1,20 @@
+Rally Number, Stats
+1, Service Ace
+2, Service error
+3, service error
+4, serve, bump, set, spike, bump, bump, set, set miss
+5, serve, bump, set, spike, 
+6, serve, bump, set, spike, bump, set, spike
+7, serve, set, set
+8, serve, bump, set, spike
+9, service ace
+10, service error
+11, serve, bump, bump, set
+12, serve, bump, set, spike
+13, serve, bump, bump
+14, service error
+15, serve, bump, set, tip, bump, set, spike, set, bump, bump, set, set, spike
+16, service error
+17, service error
+18, serve, bump, bump, spike
+19, serve, bump, set

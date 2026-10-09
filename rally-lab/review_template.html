@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rally Review</title>
+<style>
+  :root { --bg:#111418; --panel:#1b2027; --line:#2c333d; --text:#e8ecf1; --muted:#8a95a3;
+          --ok:#3fb68b; --bad:#e5534b; --acc:#f2c94c; --lab:#4c8df2; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 -apple-system, system-ui, sans-serif; }
+  header { display:flex; gap:16px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:15px; margin:0; }
+  .stat { color:var(--muted); }
+  .stat b { color:var(--text); }
+  main { display:grid; grid-template-columns: 1fr 320px; height:calc(100vh - 49px); }
+  @media (max-width: 900px) { main { grid-template-columns:1fr; height:auto; } }
+  .left { display:flex; flex-direction:column; min-width:0; padding:12px 16px; gap:10px; }
+  video { width:100%; max-height:62vh; background:#000; border-radius:6px; }
+  .timeline { position:relative; height:34px; background:var(--panel); border-radius:4px; cursor:pointer; }
+  .timeline .seg { position:absolute; top:4px; height:12px; border-radius:2px; background:var(--acc); opacity:.85; }
+  .timeline .seg.ok { background:var(--ok); } .timeline .seg.bad { background:var(--bad); }
+  .timeline .lab { position:absolute; top:20px; height:10px; border-radius:2px; background:var(--lab); }
+  .timeline .head { position:absolute; top:0; bottom:0; width:2px; background:#fff; }
+  .legend { color:var(--muted); font-size:12px; display:flex; gap:14px; flex-wrap:wrap; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
+  .keys { color:var(--muted); font-size:12px; line-height:1.8; }
+  kbd { background:var(--panel); border:1px solid var(--line); border-radius:3px; padding:0 5px; font:12px ui-monospace, monospace; color:var(--text); }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; }
+  button { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:5px; padding:6px 10px; cursor:pointer; font:inherit; }
+  button:hover { border-color:var(--muted); }
+  aside { border-left:1px solid var(--line); overflow-y:auto; }
+  .row { display:grid; grid-template-columns: 28px 1fr auto; gap:8px; align-items:center; padding:7px 12px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .row:hover { background:var(--panel); }
+  .row.cur { background:#252c36; box-shadow: inset 3px 0 0 var(--acc); }
+  .row .n { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .row .t { font-variant-numeric:tabular-nums; }
+  .row .s { font-size:12px; padding:1px 7px; border-radius:10px; background:var(--line); color:var(--muted); }
+  .row .s.ok { background:color-mix(in srgb, var(--ok) 25%, transparent); color:var(--ok); }
+  .row .s.bad { background:color-mix(in srgb, var(--bad) 25%, transparent); color:var(--bad); }
+  .warn { display:none; background:color-mix(in srgb, var(--bad) 20%, transparent); border:1px solid var(--bad); border-radius:6px; padding:8px 12px; }
+  .warn code { font:12px ui-monospace, monospace; }
+  .row .s.added { background:color-mix(in srgb, var(--lab) 25%, transparent); color:var(--lab); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Rally review · __NAME__</h1>
+  <span class="stat">Rallies <b id="sTotal">0</b></span>
+  <span class="stat">✓ <b id="sOk">0</b></span>
+  <span class="stat">✗ false <b id="sBad">0</b></span>
+  <span class="stat">+ added <b id="sAdd">0</b></span>
+  <span class="stat">unreviewed <b id="sTodo">0</b></span>
+</header>
+<main>
+  <section class="left">
+    <div class="warn" id="warn">This video can't jump to rallies when opened this way. In Terminal run
+      <code>cd ~/Codes/Projects/rally-lab && .venv/bin/python serve.py</code> and use the page it opens.</div>
+    <video id="v" src="__VIDEO__" controls preload="metadata"></video>
+    <div class="timeline" id="tl"><div class="head" id="head"></div></div>
+    <div class="legend">
+      <span><i style="background:var(--acc)"></i>detected</span>
+      <span><i style="background:var(--ok)"></i>confirmed</span>
+      <span><i style="background:var(--bad)"></i>false</span>
+      <span><i style="background:var(--lab)"></i>your hand labels</span>
+    </div>
+    <div class="controls">
+      <button id="bPlayAll">▶ Play all rallies</button>
+      <button id="bExport">⬇ Export reviewed CSV</button>
+      <button id="bReset">Reset review</button>
+    </div>
+    <div class="keys">
+      <kbd>Space</kbd> play/pause · <kbd>→</kbd>/<kbd>N</kbd> next rally · <kbd>←</kbd>/<kbd>P</kbd> previous · <kbd>R</kbd> replay rally<br>
+      <kbd>Y</kbd> correct · <kbd>X</kbd> false clip · <kbd>[</kbd> set start here · <kbd>]</kbd> set end here<br>
+      <kbd>A</kbd> add missed rally starting here · <kbd>,</kbd>/<kbd>.</kbd> step ±2s
+    </div>
+  </section>
+  <aside id="list"></aside>
+</main>
+<script>
+const NAME = "__NAME__";
+const DETECTED = __RALLIES__;
+const LABELS = __LABELS__;
+const KEY = "rally-review:" + NAME + ":" + DETECTED.length + ":" + DETECTED.flat().reduce((a, b) => a + b, 0).toFixed(1);  // new detections -> fresh review
+const v = document.getElementById("v");
+let rallies, cur = 0, playAll = false;
+
+function fresh() { return DETECTED.map(([s, e]) => ({ s, e, st: "" })); }
+try { rallies = JSON.parse(localStorage.getItem(KEY)) || fresh(); } catch { rallies = fresh(); }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(rallies)); } catch {} }
+
+const fmt = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
+
+function render() {
+  rallies.sort((a, b) => a.s - b.s);
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  rallies.forEach((r, i) => {
+    const d = document.createElement("div");
+    d.className = "row" + (i === cur ? " cur" : "");
+    const label = { ok: "✓ ok", bad: "✗ false", added: "+ added" }[r.st] || "—";
+    d.innerHTML = `<span class="n">${i + 1}</span><span class="t">${fmt(r.s)} – ${fmt(r.e)} <span class="n">(${(r.e - r.s).toFixed(1)}s)</span></span><span class="s ${r.st}">${label}</span>`;
+    d.onclick = () => go(i);
+    list.appendChild(d);
+  });
+  const c = k => rallies.filter(r => r.st === k).length;
+  sTotal.textContent = rallies.filter(r => r.st !== "bad").length;
+  sOk.textContent = c("ok"); sBad.textContent = c("bad"); sAdd.textContent = c("added"); sTodo.textContent = c("");
+  drawTimeline();
+  list.children[cur]?.scrollIntoView({ block: "nearest" });
+}
+
+function drawTimeline() {
+  const tl = document.getElementById("tl");
+  tl.querySelectorAll(".seg,.lab").forEach(e => e.remove());
+  const D = v.duration || Math.max(...rallies.map(r => r.e), 1);
+  const add = (cls, s, e) => { const d = document.createElement("div"); d.className = cls;
+    d.style.left = (s / D * 100) + "%"; d.style.width = Math.max(.15, (e - s) / D * 100) + "%"; tl.appendChild(d); };
+  rallies.forEach(r => add("seg " + (r.st === "added" ? "ok" : r.st), r.s, r.e));
+  LABELS.forEach(([s, e]) => add("lab", s, e));
+}
+
+function go(i, play = true) {
+  cur = Math.max(0, Math.min(rallies.length - 1, i));
+  const t = rallies[cur].s;
+  const seek = () => {
+    v.currentTime = t;
+    v.addEventListener("seeked", () => { if (play) v.play(); }, { once: true });
+  };
+  v.readyState ? seek() : v.addEventListener("loadedmetadata", seek, { once: true });
+  render();
+}
+
+function mark(st) {
+  rallies[cur].st = rallies[cur].st === st ? "" : st;
+  save(); render();
+}
+
+v.addEventListener("timeupdate", () => {
+  const D = v.duration || 1;
+  head.style.left = (v.currentTime / D * 100) + "%";
+  const r = rallies[cur];
+  if (r && !v.paused && v.currentTime >= r.e && v.currentTime < r.e + 1) {
+    if (playAll && cur < rallies.length - 1) {
+      let n = cur + 1; while (n < rallies.length - 1 && rallies[n].st === "bad") n++;
+      go(n);
+    } else v.pause();
+  }
+});
+v.addEventListener("loadedmetadata", () => {
+  drawTimeline();
+  const ok = v.seekable.length && v.seekable.end(0) > 1;
+  document.getElementById("warn").style.display = ok ? "none" : "block";
+});
+
+tl.addEventListener("click", e => {
+  const rect = tl.getBoundingClientRect();
+  v.currentTime = (e.clientX - rect.left) / rect.width * (v.duration || 0);
+});
+
+document.addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey) return;
+  const k = e.key;
+  if (k === " ") { e.preventDefault(); v.paused ? v.play() : v.pause(); }
+  else if (k === "ArrowRight" || k === "n") { e.preventDefault(); go(cur + 1); }
+  else if (k === "ArrowLeft" || k === "p") { e.preventDefault(); go(cur - 1); }
+  else if (k === "r") go(cur);
+  else if (k === "y") mark("ok");
+  else if (k === "x") mark("bad");
+  else if (k === "[") { rallies[cur].s = +v.currentTime.toFixed(1); save(); render(); }
+  else if (k === "]") { rallies[cur].e = +v.currentTime.toFixed(1); save(); render(); }
+  else if (k === "a") {
+    const s = +v.currentTime.toFixed(1);
+    rallies.push({ s, e: s + 5, st: "added" });
+    rallies.sort((a, b) => a.s - b.s);
+    cur = rallies.findIndex(r => r.s === s); save(); render();
+  }
+  else if (k === ",") v.currentTime -= 2;
+  else if (k === ".") v.currentTime += 2;
+});
+
+bPlayAll.onclick = () => { playAll = !playAll; bPlayAll.textContent = playAll ? "⏸ Stop play-all" : "▶ Play all rallies"; if (playAll) go(cur); };
+bReset.onclick = () => { if (confirm("Discard your review marks for this video?")) { rallies = fresh(); cur = 0; save(); render(); } };
+bExport.onclick = () => {
+  const rows = ["start,end,status"].concat(
+    rallies.map(r => `${fmt(r.s)},${fmt(r.e)},${r.st || "unreviewed"}`));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv" }));
+  a.download = `${NAME} reviewed.csv`; a.click();
+};
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0b1220;
+  --color-surface: #131c2e;
+  --color-raised: #1a2540;
+  --color-line: #24324f;
+  --color-ink: #e9eef7;
+  --color-muted: #8a9bb5;
+  --color-ball: #f5c518;
+  --color-court: #2a6fdb;
+  --color-good: #3fb68b;
+  --color-bad: #e5534b;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Oswald", "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root { color-scheme: dark; }
+
+html, body, #root { min-height: 100%; }
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* card finishes by overall tier */
+.tier-gold    { background: linear-gradient(150deg, #f8dc7a 0%, #d6a933 45%, #8a6414 100%); color: #1d1503; }
+.tier-silver  { background: linear-gradient(150deg, #eef2f7 0%, #b4c0cf 45%, #6b7a8f 100%); color: #121821; }
+.tier-bronze  { background: linear-gradient(150deg, #f0b98a 0%, #c07a45 45%, #6e3f1d 100%); color: #1c0f05; }
+.tier-unrated { background: linear-gradient(150deg, #33415e 0%, #222d45 55%, #161e30 100%); color: var(--color-ink); }
+
+.safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 8px); }
+.safe-top { padding-top: env(safe-area-inset-top); }
