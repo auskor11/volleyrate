@@ -1,8 +1,8 @@
 // Volleyball court with both teams' rotations: Team A on the top half, Team B on the bottom, net in the
-// middle, subs on the left. Drag a name onto another to swap them (or tap one, then the other).
+// middle, subs on the left. Drag a name onto another to swap them (or tap one, then the other): roles stay
+// with the spots, so swapped players swap roles and a sub takes over the role of the player they replace.
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import type { Position } from '../lib/ratings';
-import { TEAMS, rotate, rotateBack, type CourtState, type Side, type Team } from '../lib/rotation';
+import { TEAMS, roleAt, rotate, rotateBack, type CourtState, type Side, type Team } from '../lib/rotation';
 
 // slot keys: "a.pos.0" (team A, position 1), "b.bench.2", "a.bench.end" (drop zone at the end of the bench)
 type Where = { t: Team; list: 'pos' | 'bench'; i: number };
@@ -25,7 +25,7 @@ export function moveSlot(c: CourtState, from: string, to: string, allowEmpty: bo
   const pa = get(c, a), pb = get(c, b);
   if (!pa && !pb) return c;
   if (!allowEmpty && a.list === 'pos' !== (b.list === 'pos') && (!pa || !pb)) return c;  // keep six on court
-  const n: CourtState = { ...c, a: { pos: [...c.a.pos], bench: [...c.a.bench] }, b: { pos: [...c.b.pos], bench: [...c.b.bench] } };
+  const n: CourtState = { ...c, a: { ...c.a, pos: [...c.a.pos], bench: [...c.a.bench] }, b: { ...c.b, pos: [...c.b.pos], bench: [...c.b.bench] } };
   const put = (w: Where, v: string) => {
     if (w.i < 0) { if (v) n[w.t].bench.push(v); }
     else n[w.t][w.list][w.i] = v;
@@ -36,12 +36,9 @@ export function moveSlot(c: CourtState, from: string, to: string, allowEmpty: bo
   return n;
 }
 
-const ROLE_SHORT: Record<Position, string> = { S: 'S', OH: 'OH', OPP: 'OPP', MB: 'MB', L: 'L' };
-
-export function Court({ c, name, roles, onChange, onSlot, target, allowEmpty = false, controls = false }: {
+export function Court({ c, name, onChange, onSlot, target, allowEmpty = false, controls = false }: {
   c: CourtState;
   name: (id: string) => string;
-  roles: Record<string, Position>;
   onChange?: (c: CourtState) => void;
   onSlot?: (key: string) => void;   // setup: a tap picks the slot to fill instead of selecting it
   target?: string | null;           // highlighted slot (setup: the next one to fill)
@@ -86,18 +83,18 @@ export function Court({ c, name, roles, onChange, onSlot, target, allowEmpty = f
     else { if (selected !== p.key) drop(selected, p.key); setSelected(null); }
   };
 
-  const token = (key: string, id: string, label: string, extra = '') => {
+  const token = (key: string, id: string, label: string, role?: string) => {
     const serving = key === `${c.serving}.pos.0`;
     const hl = target === key || selected === key;
     return (
       <div key={key} data-slot={key}
         onPointerDown={e => down(e, key)} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { press.current = null; setGhost(null); }}
-        className={`touch-none select-none rounded-md border px-1 py-0.5 text-center text-[11px] leading-tight ${extra}
+        className={`touch-none select-none rounded-md border px-1 py-0.5 text-center text-[11px] leading-tight
           ${hl ? 'border-court bg-court/25 ring-2 ring-court' : serving ? 'border-ball bg-ball/20 text-ball' : id ? 'border-line bg-raised' : 'border-dashed border-line text-muted'}
           ${editable || onSlot ? 'cursor-pointer' : ''} ${ghost?.key === key ? 'opacity-40' : ''}`}>
         <div className={`text-[9px] ${serving ? 'text-ball' : 'text-muted'}`}>{label}</div>
         <div className="truncate font-semibold">{id ? name(id) : onSlot ? 'tap' : '—'}</div>
-        {id && id !== 'guest' && roles[id] && <div className="text-[9px] text-muted">{ROLE_SHORT[roles[id]]}</div>}
+        {role && <div className="text-[9px] text-muted">{role}</div>}
       </div>
     );
   };
@@ -105,7 +102,7 @@ export function Court({ c, name, roles, onChange, onSlot, target, allowEmpty = f
   const bench = (t: Team) => (
     <div className="flex min-h-0 flex-1 flex-col gap-1">
       <div className="text-[10px] text-muted">{t.toUpperCase()} subs</div>
-      {c[t].bench.map((id, i) => token(`${t}.bench.${i}`, id, 'sub'))}
+      {c[t].bench.map((id, i) => token(`${t}.bench.${i}`, id, 'sub', id === c[t].mb ? 'MB' : undefined))}
       <div data-slot={`${t}.bench.end`} onPointerDown={e => down(e, `${t}.bench.end`)} onPointerUp={up}
         className={`flex min-h-8 flex-1 items-center justify-center rounded-md border border-dashed text-center text-[10px] text-muted
           ${target === `${t}.bench.end` ? 'border-court bg-court/20' : 'border-line'}`}>
@@ -131,7 +128,7 @@ export function Court({ c, name, roles, onChange, onSlot, target, allowEmpty = f
           <span className="absolute bottom-1 right-1.5 text-[11px] font-semibold text-muted">B</span>
           {TEAMS.flatMap(t => c[t].pos.map((id, i) => (
             <div key={`${t}${i}`} className="absolute w-[31%] -translate-x-1/2 -translate-y-1/2" style={{ left: `${SPOTS[t][i][0]}%`, top: `${SPOTS[t][i][1]}%` }}>
-              {token(`${t}.pos.${i}`, id, i === 0 && t === c.serving ? '1 · 🏐 serve' : String(i + 1))}
+              {token(`${t}.pos.${i}`, id, i === 0 && t === c.serving ? '1 · 🏐 serve' : String(i + 1), roleAt(c[t], i))}
             </div>
           )))}
         </div>

@@ -20,7 +20,7 @@
   - Pick the original file on your phone or laptop. The rally detector runs **on that device** and saves only the rally times.
 - **Review:** fix the detected rallies (good / not a rally / adjust start and end / add missed ones). Each change is kept in the game's edit history.
 - **Touch tagging:** tag every contact (serve → receive → set → attack …) and how each rally ended. Keyboard shortcuts and tap-friendly buttons; AI-suggested touch moments come from contact sounds.
-  Before tagging, put both teams on a court view (positions 1–6, subs, roles). While tagging, a third column shows the live rotation: it rotates on each side-out, brings a same-role sub on at serve (e.g. the extra middle), and pre-selects the server. Reviewers drag subs in or fix the court; fixes carry forward (`src/lib/rotation.ts`, `src/components/Court.tsx`).
+  Before tagging, put both teams on a court view (positions 1–6 and subs). Roles go with the starting spot (1 OH, 2 S, 3 MB, 4 OH, 5 OPP, 6 L) and rotate with it, so players who swap spots swap roles and a sub takes the role of whoever they replace. While tagging, a third column shows the live rotation: it rotates on each side-out, brings the extra middle blocker on for the libero in the front row (libero back on at the 1 → 6 rotation), and pre-selects the server. Reviewers drag other subs and swaps in; changes carry forward (`src/lib/rotation.ts`, `src/components/Court.tsx`).
 - **Stats and ratings:**
   - Tagged games produce a box score and per-player stats, with links to the clips.
   - Once the admin applies a game, its stats move the ratings. See **[docs/ratings.md](docs/ratings.md)** for exactly how.
@@ -97,7 +97,7 @@ private.example/     the formats of the files in private/
 |---|---|---|
 | `members/{email}` | `{ playerId, role: 'admin' \| 'player' }`: who may sign in | admin |
 | `players/{id}` | `{ name, number, positions[], ratings{attr: 0–99} }`: starting ratings | admin |
-| `games/{id}` | `{ title, date, youtubeId, duration, reviewed, rallies[], segments?, peaks?, rating?, court?: { a, b: { pos[6], bench[] }, serving, roles } }` | team (only admin deletes) |
+| `games/{id}` | `{ title, date, youtubeId, duration, reviewed, rallies[], segments?, peaks?, rating?, court?: { a, b: { pos[6], roles[6], bench[], mb? }, serving } }` | team (only admin deletes) |
 | `games/{id}/history` | append-only edit log | team (add only) |
 | `highlights/{id}` | `{ playerId, gameId, youtubeId, s, e, note, by }` | the adder; removable by the adder, the player, or admin |
 | `config/ratingsEngine` | rating sensitivity settings | admin |

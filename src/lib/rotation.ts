@@ -4,10 +4,16 @@
 // Positions are numbered the standard way, anticlockwise from back right: 1 (serves), 2 front right,
 // 3 front middle, 4 front left, 5 back left, 6 back middle. pos[0] is position 1.
 //
+// Roles belong to court spots, set by where the spot starts: 1 OH, 2 S, 3 MB, 4 OH, 5 OPP, 6 L. A spot
+// keeps its role as it rotates, so players who swap spots swap roles, and a sub takes over the role of
+// the player they replace.
+//
 // After each rally: if the serving team won, nothing moves. Otherwise the other team wins the serve and
-// rotates clockwise (2 → 1, 3 → 2 … 1 → 6), and its new position-1 player serves. A bench player with
-// the same role as the one rotating into position 1 (e.g. the extra middle) comes on to serve in their
-// place. Each rally's court is saved once it's tagged or edited, so a fix carries forward from there.
+// rotates clockwise (2 → 1, 3 → 2 … 1 → 6), and its new position-1 player serves. The extra middle
+// blocker (a sub marked as such) comes on for the libero when the libero's spot reaches the front row
+// (5 → 4), serves when it gets to 1, and the libero comes back on as it moves to the back row (1 → 6).
+// Other subs are made by the reviewer. Each rally's court is saved once it's tagged or edited, so a fix
+// carries forward from there.
 import type { Rally, Skill, Touch } from './games';
 import type { Position } from './ratings';
 
@@ -15,12 +21,26 @@ export type Team = 'a' | 'b';
 export const TEAMS: Team[] = ['a', 'b'];
 export const other = (t: Team): Team => (t === 'a' ? 'b' : 'a');
 
-/** One team: pos[0] = position 1 … pos[5] = position 6 ('' = nobody yet); bench = subs, longest waiting first. */
-export interface Side { pos: string[]; bench: string[] }
-export interface CourtState { a: Side; b: Side; serving: Team; manual?: boolean }  // manual: changed by hand (a sub, a fix)
-export interface CourtSetup extends CourtState { roles: Record<string, Position> }
+/** Role of each spot by where it starts: position 1 OH, 2 S, 3 MB, 4 OH, 5 OPP, 6 L. */
+export const START_ROLES: Position[] = ['OH', 'S', 'MB', 'OH', 'OPP', 'L'];
 
-export const emptySide = (): Side => ({ pos: ['', '', '', '', '', ''], bench: [] });
+/**
+ * One team. pos[0] = position 1 … pos[5] = position 6 ('' = nobody yet); roles[i] = role of the spot at
+ * pos[i] (rotates with it); bench = subs, longest waiting first; mb = the sub who is the extra middle
+ * blocker; libero = who to bring back when the extra middle goes off.
+ */
+export interface Side { pos: string[]; roles: Position[]; bench: string[]; mb?: string; libero?: string }
+export interface CourtState { a: Side; b: Side; serving: Team; manual?: boolean }  // manual: changed by hand (a sub, a fix)
+export type CourtSetup = CourtState;
+
+export const emptySide = (): Side => ({ pos: ['', '', '', '', '', ''], roles: [...START_ROLES], bench: [] });
+
+/** Courts saved before spots had roles get the starting roles. */
+export const normSide = (s: Side): Side => (s.roles?.length === 6 ? s : { ...s, roles: [...START_ROLES] });
+const norm = (c: CourtState): CourtState => ({ ...c, a: normSide(c.a), b: normSide(c.b) });
+
+/** The role a player is playing at spot i (the extra middle plays middle when standing in for the libero). */
+export const roleAt = (s: Side, i: number): Position => (s.roles[i] === 'L' && s.pos[i] && s.pos[i] === s.mb ? 'MB' : s.roles[i]);
 
 /** Both teams have all six spots filled, so tagging can start. */
 export const setupReady = (c?: CourtSetup | null): c is CourtSetup =>
@@ -62,42 +82,48 @@ export function rallyWinner(c: CourtState, r: Rally): Team | null {
   return r.end.r === 'point' ? t : other(t);
 }
 
-/** Clockwise: the player at 2 moves to 1, 3 to 2 … 1 to 6. */
-export const rotate = (s: Side): Side => ({ ...s, pos: [...s.pos.slice(1), s.pos[0]] });
-export const rotateBack = (s: Side): Side => ({ ...s, pos: [s.pos[5], ...s.pos.slice(0, 5)] });
+const turn = <T,>(xs: T[], back = false): T[] => (back ? [xs[5], ...xs.slice(0, 5)] : [...xs.slice(1), xs[0]]);
+/** Clockwise: the player at 2 moves to 1, 3 to 2 … 1 to 6 (each spot keeps its role). */
+export const rotate = (s: Side): Side => ({ ...s, pos: turn(s.pos), roles: turn(s.roles) });
+export const rotateBack = (s: Side): Side => ({ ...s, pos: turn(s.pos, true), roles: turn(s.roles, true) });
 
-/** The bench player with the same role as the new position-1 player comes on to serve. */
-function autoSub(s: Side, roles: Record<string, Position>): Side {
-  const p = s.pos[0], r = roles[p];
-  if (!r) return s;
-  const i = s.bench.findIndex(b => roles[b] === r);
-  if (i < 0) return s;
-  const bench = [...s.bench];
-  const [sub] = bench.splice(i, 1);
-  return { pos: [sub, ...s.pos.slice(1)], bench: [...bench, p] };
+/** After a rotation: the extra middle and the libero trade places at the front-row and back-row lines. */
+function liberoSwap(s: Side): Side {
+  const i = s.roles.indexOf('L');
+  if (i < 0 || !s.mb) return s;
+  const swapIn = (on: string, off: string, extra: Partial<Side>): Side => ({
+    ...s, ...extra,
+    pos: s.pos.map((p, j) => (j === i ? on : p)),
+    bench: [...s.bench.filter(b => b !== on), off],
+  });
+  // libero's spot just moved 5 → 4 (front row): the extra middle comes on
+  if (i === 3 && s.pos[i] !== s.mb && s.bench.includes(s.mb)) return swapIn(s.mb, s.pos[i], { libero: s.pos[i] });
+  // …and just moved 1 → 6 (back row, after serving): the libero comes back on
+  if (i === 5 && s.pos[i] === s.mb && s.libero && s.bench.includes(s.libero)) return swapIn(s.libero, s.mb, {});
+  return s;
 }
 
 /** Put player p at position 1 of their team (keeping everyone's order) and make that team serve. */
 export function makeServer(c: CourtState, p: string): CourtState {
   for (const t of TEAMS) {
     const j = c[t].pos.indexOf(p);
-    if (j >= 0) return { ...c, [t]: { ...c[t], pos: [...c[t].pos.slice(j), ...c[t].pos.slice(0, j)] }, serving: t };
+    if (j >= 0) return { ...c, [t]: { ...c[t], pos: [...c[t].pos.slice(j), ...c[t].pos.slice(0, j)], roles: [...c[t].roles.slice(j), ...c[t].roles.slice(0, j)] }, serving: t };
   }
   return c;
 }
 
 /** The court after rally r, and who won it. */
-function advance(c: CourtState, r: Rally, roles: Record<string, Position>): { next: CourtState; winner: Team | null } {
+function advance(c: CourtState, r: Rally): { next: CourtState; winner: Team | null } {
   let cur = c;
   // a tagged serve by someone else (games tagged before courts existed): line the rotation up with it
   const sv = r.touches?.[0];
   if (sv?.k === 'serve' && sv.p !== 'guest' && sv.p !== server(c)) cur = makeServer(c, sv.p);
   const winner = rallyWinner(cur, r);
   if (!winner || winner === cur.serving) return { next: cur, winner };
-  return { next: { ...cur, [winner]: autoSub(rotate(cur[winner]), roles), serving: winner }, winner };
+  return { next: { ...cur, [winner]: liberoSwap(rotate(cur[winner])), serving: winner }, winner };
 }
 
-export const courtOnly = (c: CourtState): CourtState => ({ a: c.a, b: c.b, serving: c.serving });
+export const courtOnly = (c: CourtState): CourtState => ({ a: normSide(c.a), b: normSide(c.b), serving: c.serving });
 export const sameCourt = (x: CourtState, y: CourtState) => JSON.stringify(courtOnly(x)) === JSON.stringify(courtOnly(y));
 
 export interface CourtView {
@@ -117,11 +143,12 @@ export function courtFor(setup: CourtSetup, rallies: Rally[], at: number): Court
   let state: CourtState = courtOnly(k >= 0 ? rallies[k].court! : setup);
   let lastWinner: Team | null = null;
   for (let i = Math.max(k, 0); i < at; i++) {
-    const step = advance(state, rallies[i], setup.roles);
+    const step = advance(state, rallies[i]);
     state = step.next;
     lastWinner = step.winner;
   }
-  const saved = rallies[at]?.court;
+  const sv = rallies[at]?.court;
+  const saved = sv && { ...courtOnly(sv), ...(sv.manual ? { manual: true } : {}) };
   return {
     state: saved ?? state, derived: state, saved: !!saved, manual: !!saved?.manual,
     mismatch: !!saved && !sameCourt(saved, state), first: at === 0, lastWinner,
@@ -135,11 +162,11 @@ export function fromLegacy(l: LegacyLineup): CourtSetup {
   const side = (order: string[], ns: string[] = []): Side => {
     const pos = order.slice(0, 6);
     while (pos.length < 6) pos.push('');
-    return { pos, bench: [...order.slice(6), ...ns] };
+    return { pos, roles: [...START_ROLES], bench: [...order.slice(6), ...ns] };
   };
-  return { a: side(l.a, l.nonServing?.a), b: side(l.b, l.nonServing?.b), serving: 'a', roles: l.roles ?? {} };
+  return { a: side(l.a, l.nonServing?.a), b: side(l.b, l.nonServing?.b), serving: 'a' };
 }
 
-/** The game's court setup (converting teams saved in the older list format). */
+/** The game's court setup (converting teams saved in older formats). */
 export const gameSetup = (g: { court?: CourtSetup; lineup?: LegacyLineup }): CourtSetup | null =>
-  g.court ?? (g.lineup ? fromLegacy(g.lineup) : null);
+  g.court ? norm(g.court) : g.lineup ? fromLegacy(g.lineup) : null;

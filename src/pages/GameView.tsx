@@ -11,7 +11,7 @@ import { computeStats, type StatKey } from '../lib/stats';
 import { buildModel, effectiveRatings, type RatingModel } from '../lib/engine';
 import { useEngineSettings } from '../lib/rated';
 import { createBackup } from '../lib/backups';
-import { CATEGORIES, POSITIONS, overall, type Position } from '../lib/ratings';
+import { CATEGORIES, overall } from '../lib/ratings';
 import { logHistory, setGameRating, useGames, useHistory } from '../lib/games';
 import { addHighlight, useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
@@ -737,7 +737,7 @@ function RotationPanel({ view, setup, name, onChange, onSetup }: {
         <span className="text-sm font-semibold">Rotation</span>
         <span className={`truncate text-[11px] ${warn ? 'text-ball' : view?.saved ? 'text-good' : 'text-muted'}`}>{status}</span>
       </div>
-      <Court c={shown} name={id => name(id)} roles={setup.roles} controls={!!view}
+      <Court c={shown} name={id => name(id)} controls={!!view}
         onChange={view ? c => onChange(c, 'changed the court') : undefined} />
       {view?.mismatch && (
         <button onClick={() => onChange(view.derived, 'reset the court to the rotation', false)}
@@ -1064,7 +1064,7 @@ function nextSpot(c: CourtState, prefer: Team): string {
 function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]; onClose: () => void }) {
   const user = useAuth()?.user ?? null;
   const games = useGames();
-  const blank: CourtSetup = { a: emptySide(), b: emptySide(), serving: 'a', roles: {} };
+  const blank: CourtSetup = { a: emptySide(), b: emptySide(), serving: 'a' };
   const [c, setC] = useState<CourtSetup>(() => gameSetup(game) ?? blank);
   const [target, setTarget] = useState<string>(() => nextSpot(gameSetup(game) ?? blank, 'a'));
   const [busy, setBusy] = useState(false);
@@ -1076,31 +1076,28 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
   const tSpot = target.split('.')[1] === 'pos' ? Number(target.split('.')[2]) : -1;
   const tPlayer = tSpot >= 0 ? c[tTeam].pos[tSpot] : '';
 
-  // roles for everyone on a team; new players start with their usual position
-  const withRoles = (x: CourtSetup): CourtSetup => {
-    const roles: CourtSetup['roles'] = {};
-    for (const id of TEAMS.flatMap(t => [...x[t].pos, ...x[t].bench])) {
-      if (!id || id === 'guest') continue;
-      const r = x.roles[id] ?? players.find(p => p.id === id)?.positions[0];
-      if (r) roles[id] = r;
-    }
-    return { ...x, roles };
-  };
   const place = (id: string) => {
     const t = tTeam;
-    const n: CourtSetup = { ...c, [t]: { pos: [...c[t].pos], bench: [...c[t].bench] } };
+    const n: CourtSetup = { ...c, [t]: { ...c[t], pos: [...c[t].pos], bench: [...c[t].bench] } };
     if (tSpot >= 0) n[t].pos[tSpot] = id;
     else n[t].bench.push(id);
-    const w = withRoles(n);
-    setC(w);
-    setTarget(nextSpot(w, t));
+    setC(tidy(n));
+    setTarget(nextSpot(n, t));
   };
   const clearSpot = () => {
     if (tSpot < 0) return;
-    setC(withRoles({ ...c, [tTeam]: { ...c[tTeam], pos: c[tTeam].pos.map((p, i) => i === tSpot ? '' : p) } }));
+    setC(tidy({ ...c, [tTeam]: { ...c[tTeam], pos: c[tTeam].pos.map((p, i) => i === tSpot ? '' : p) } }));
   };
-  const missingRole = [...used].filter(p => !c.roles[p]);
-  const ok = setupReady(c) && !missingRole.length;
+  // the extra middle must be on the bench; nobody starts subbed in for the libero
+  const tidy = (x: CourtSetup): CourtSetup => {
+    const fix = (sd: CourtSetup['a']) => {
+      const { mb, libero: _l, ...rest } = sd;
+      return mb && sd.bench.includes(mb) ? { ...rest, mb } : rest;
+    };
+    return { ...x, a: fix(x.a), b: fix(x.b) };
+  };
+  const setMb = (t: Team, id: string | null) => setC(x => tidy({ ...x, [t]: { ...x[t], mb: id ?? undefined } }));
+  const ok = setupReady(c);
 
   const save = async () => {
     setBusy(true);
@@ -1119,12 +1116,12 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
             <h2 className="font-semibold">Starting teams</h2>
             <p className="mt-0.5 text-sm text-muted">Who stands where at the first rally. Positions go 1 → 6 anticlockwise from back right; 1 serves.</p>
           </div>
-          {prev && <button className="shrink-0 rounded-md border border-line px-2 py-1 text-xs" onClick={() => { const x = withRoles(gameSetup(prev)!); setC(x); setTarget(nextSpot(x, 'a')); }}>Copy from {prev.title}</button>}
+          {prev && <button className="shrink-0 rounded-md border border-line px-2 py-1 text-xs" onClick={() => { const x = tidy(gameSetup(prev)!); setC(x); setTarget(nextSpot(x, 'a')); }}>Copy from {prev.title}</button>}
         </div>
         <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
           <div className="mx-auto w-full max-w-[15rem]">
-            <Court c={c} name={name} roles={c.roles} allowEmpty target={target}
-              onSlot={k => setTarget(k)} onChange={x => setC(withRoles({ ...c, ...x }))} />
+            <Court c={c} name={name} allowEmpty target={target}
+              onSlot={k => setTarget(k)} onChange={x => setC(tidy({ ...c, ...x }))} />
           </div>
           <div className="min-w-0 space-y-3">
             <div className="rounded-lg bg-raised px-3 py-2 text-sm">
@@ -1147,29 +1144,33 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
                   className={`rounded-md border px-3 py-1 ${c.serving === t ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>Team {t.toUpperCase()}</button>
               ))}
             </div>
-            {used.size > 0 && (
-              <div>
-                <p className="mb-1 text-xs text-muted">Roles</p>
-                <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
-                  {[...used].map(id => (
-                    <label key={id} className="flex items-center justify-between gap-1 rounded-md bg-raised px-2 py-1 text-xs">
-                      <span className="truncate">{name(id)}</span>
-                      <select value={c.roles[id] ?? ''} onChange={e => setC({ ...c, roles: { ...c.roles, [id]: e.target.value as Position } })}
-                        className="rounded border border-line bg-surface px-1 py-0.5 text-ink outline-none">
-                        {!c.roles[id] && <option value="">role</option>}
-                        {(Object.keys(POSITIONS) as Position[]).map(r => <option key={r} value={r}>{r}</option>)}
-                      </select>
-                    </label>
-                  ))}
-                </div>
-                <p className="mt-1 text-[11px] text-muted">A sub comes on automatically for the player of the same role rotating into position 1 (e.g. the extra middle). Other subs: drag them in while tagging.</p>
+            <p className="text-[11px] text-muted">
+              Roles go with the starting spot: 1 OH, 2 S, 3 MB, 4 OH, 5 OPP, 6 L. Players who swap spots mid-game swap
+              roles; a sub takes the role of whoever they replace.
+            </p>
+            {TEAMS.some(t => c[t].bench.length > 0) && (
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted">Extra middle blocker (comes on for the libero in the front row automatically)</p>
+                {TEAMS.filter(t => c[t].bench.length).map(t => (
+                  <div key={t} className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="w-14 text-muted">Team {t.toUpperCase()}</span>
+                    {c[t].bench.filter(p => p !== 'guest').map(p => (
+                      <button key={p} onClick={() => setMb(t, c[t].mb === p ? null : p)}
+                        className={`rounded-md border px-2 py-1 ${c[t].mb === p ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>
+                        {name(p)}{c[t].mb === p ? ' · MB' : ''}
+                      </button>
+                    ))}
+                    <span className="text-muted">{c[t].mb ? '' : 'none'}</span>
+                  </div>
+                ))}
+                <p className="text-[11px] text-muted">Other subs: drag them in while tagging.</p>
               </div>
             )}
           </div>
         </div>
         {!ok && used.size > 0 && (
           <p className="mt-3 text-xs text-bad">
-            {!setupReady(c) ? 'Fill all six positions for both teams (use Guest for guests).' : `Pick a role for ${missingRole.map(name).join(', ')}.`}
+            Fill all six positions for both teams (use Guest for guests).
           </p>
         )}
         <p className="mt-3 text-[11px] text-muted">Rallies already tagged keep the court saved with them.</p>

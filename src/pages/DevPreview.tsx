@@ -53,9 +53,9 @@ export function DevGame() {
           id: 'dev', title: 'Sample game', date: '2026-09-26', youtubeId: 'M7lc1UVf-VE', duration: 1340,
           rallies, reviewed: false, createdBy: 'dev', peaks: devSample.peaks,
           court: location.search.includes('noteams') ? undefined : {
-            a: { pos: ['alex', 'ben', 'chris', 'dana', 'guest', 'eli'], bench: ['ivan'] },
-            b: { pos: ['finn', 'gabe', 'hana', 'guest', 'jo', 'guest'], bench: [] },
-            serving: 'a', roles: { alex: 'S', ben: 'OH', chris: 'MB', dana: 'OPP', eli: 'MB', ivan: 'MB', finn: 'S', gabe: 'OH', hana: 'MB', jo: 'OH' },
+            a: { pos: ['alex', 'ben', 'chris', 'dana', 'eli', 'jo'], roles: ['OH', 'S', 'MB', 'OH', 'OPP', 'L'], bench: ['ivan'], mb: 'ivan' },
+            b: { pos: ['finn', 'gabe', 'hana', 'guest', 'guest', 'guest'], roles: ['OH', 'S', 'MB', 'OH', 'OPP', 'L'], bench: [] },
+            serving: 'a',
           } }} />
       </div>
     </MemoryRouter>
