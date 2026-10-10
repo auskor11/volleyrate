@@ -88,18 +88,30 @@ export function forcedBy(touches: Touch[], end: RallyEnd): number {
   return prev && err && prev.p !== err.p && FORCED[prev.k]?.includes(err.k) ? end.i - 1 : -1;
 }
 
+/** Whether two players could be teammates: false only when they're known to be on different teams. */
+export type SameTeam = (a: string, b: string) => boolean;
+
+/**
+ * Who gets the assist for the attack at touch i, as a touch index (-1 = nobody): the set just before it,
+ * or a dig straight to the attacker (no set in between) by a teammate. Never the attacker themselves.
+ */
+export function assistIndex(ts: Touch[], i: number, sameTeam?: SameTeam): number {
+  const x = ts[i], before = ts[i - 1];
+  if (x?.k !== 'attack' || !before || before.p === x.p) return -1;
+  if (before.k === 'set') return i - 1;
+  if (before.k === 'dig' && (sameTeam?.(before.p, x.p) ?? true)) return i - 1;
+  return -1;
+}
+
 /** Short description of how a rally ended, from touches or an older point tag. */
-export function rallyResult(r: Rally): { label: string; good: boolean; who: string; note?: string; noteWho?: string; assist?: string } | null {
+export function rallyResult(r: Rally, sameTeam?: SameTeam): { label: string; good: boolean; who: string; note?: string; noteWho?: string; assist?: string } | null {
   if (r.touches?.length && r.end) {
     const ts = r.touches;
     const t = ts[r.end.i];
     if (!t) return null;
     const point = r.end.r === 'point';
-    // the set just before a kill (by someone else) is an assist
-    const assistFor = (i: number) => {
-      const x = ts[i], before = ts[i - 1];
-      return x?.k === 'attack' && before?.k === 'set' && before.p !== x.p ? before.p : undefined;
-    };
+    // the set (or a teammate's dig) just before a kill is an assist
+    const assistFor = (i: number) => { const a = assistIndex(ts, i, sameTeam); return a >= 0 ? ts[a].p : undefined; };
     const f = forcedBy(ts, r.end);
     if (f >= 0) {
       const by = ts[f];

@@ -46,7 +46,7 @@ export function DevGame() {
   // real Game 2-3 rally times + contact sounds, on a public sample video (saving fails: no sign-in)
   const rallies = devSample.rallies.map(([s, e]) => ({ s, e, st: 'auto' as const, as: s, ae: e }));
   return (
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[`/${location.search}`]}>
       <div className="mx-auto max-w-7xl px-4 pb-28 pt-[4.5rem]">
         <GamePlayer canDelete samplePlayers={['Alex', 'Ben', 'Chris', 'Dana', 'Eli', 'Finn', 'Gabe', 'Hana', 'Ivan', 'Jo']
           .map((n, i) => ({ id: n.toLowerCase().replace(' ', '-'), name: n, number: [1, 11, 5, 83, 10, 81, 4, 9, 8, 17][i], positions: ['OH'], ratings: {} }))} game={{

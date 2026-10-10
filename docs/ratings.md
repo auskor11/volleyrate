@@ -98,6 +98,7 @@ A rally counts only if it is not marked "Not a rally", has touches tagged, and h
 - **Rally ends on a point**, credited to the touch that ended it:
   - Attack → kill; serve → ace; block → block point; a set that goes over and lands → **set-over point** for the setter.
   - If the attack came straight after a set by a **different** player, that setter gets an **assist**.
+  - A **dig straight to the attacker** (no set in between) by a teammate also gets an assist. Teams come from the game's court setup, and a dig by someone on the other team never counts. Dig assists show in Assists stats only; Setting's set efficiency counts set assists only.
   - If a block point came straight after an attack by a **different** player, that attacker is **blocked** (counts against hitting efficiency).
 
 - **Rally ends on an error** by the player who made it:

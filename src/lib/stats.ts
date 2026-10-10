@@ -1,4 +1,12 @@
-import { DEFAULT_SET_GRADE, forcedBy, type Game, type Rally, type Skill, type Touch } from './games';
+import { DEFAULT_SET_GRADE, assistIndex, forcedBy, type Game, type Rally, type SameTeam, type Skill, type Touch } from './games';
+import { gameSetup, teamOf } from './rotation';
+
+/** Teams from a game's court setup, to keep assists within a team (unknown players count as teammates). */
+export function sameTeamIn(g: Game): SameTeam | undefined {
+  const setup = gameSetup(g);
+  if (!setup) return undefined;
+  return (a, b) => { const ta = teamOf(setup, a), tb = teamOf(setup, b); return !(ta && tb && ta !== tb); };
+}
 
 export type StatKey =
   | 'serve' | 'ace' | 'serr'
@@ -76,10 +84,11 @@ export function computeStats(games: Game[]): Record<string, PlayerStats> {
     (out[pid] ??= empty())[k].push(c);
   };
   for (const g of games) {
+    const sameTeam = sameTeamIn(g);
     for (const r of g.rallies) {
       if (r.st === 'bad') continue;
       const clip = (t: number): Clip => ({ gameId: g.id, title: g.title, date: g.date, s: r.s, e: r.e, t });
-      if (r.touches?.length) addTouches(r, clip, add);
+      if (r.touches?.length) addTouches(r, clip, add, sameTeam);
       else if (r.tag) addPointTag(r, clip(r.s), add);
     }
   }
@@ -88,7 +97,7 @@ export function computeStats(games: Game[]): Record<string, PlayerStats> {
 
 type Add = (pid: string | undefined, k: StatKey | undefined, c: Clip) => void;
 
-function addTouches(r: Rally, clip: (t: number) => Clip, add: Add) {
+function addTouches(r: Rally, clip: (t: number) => Clip, add: Add, sameTeam?: SameTeam) {
   const ts = r.touches!;
   const erred = r.end?.r === 'error' ? r.end.i : -1;
   ts.forEach((t, j) => { add(t.p, ATTEMPT[t.k], clip(t.t)); detail(t, !!r.end && j !== erred).forEach(k => add(t.p, k, clip(t.t))); });
@@ -99,18 +108,20 @@ function addTouches(r: Rally, clip: (t: number) => Clip, add: Add) {
   if (r.end.r === 'point') {
     add(t.p, POINT[t.k], clip(t.t));
     kill(t);
-    // a player can't touch twice in a row, so never credit them for their own set / attack
-    if (t.k === 'attack' && prev?.k === 'set' && prev.p !== t.p) add(prev.p, 'assist', clip(prev.t));
+    // assist: the set (or a teammate's dig) just before the kill; never the attacker themselves
+    const a = assistIndex(ts, r.end.i, sameTeam);
+    if (a >= 0) add(ts[a].p, 'assist', clip(ts[a].t));
     if (t.k === 'block' && prev?.k === 'attack' && prev.p !== t.p) add(prev.p, 'blocked', clip(prev.t));
   } else {
     add(t.p, ERROR[t.k] ?? 'oerr', clip(t.t));
     // the serve / attack / block that forced this error also scored
     const f = forcedBy(ts, r.end);
     if (f >= 0) {
-      const by = ts[f], before = ts[f - 1];
+      const by = ts[f];
       add(by.p, POINT[by.k], clip(by.t));
       kill(by);
-      if (by.k === 'attack' && before?.k === 'set' && before.p !== by.p) add(before.p, 'assist', clip(before.t));
+      const a = assistIndex(ts, f, sameTeam);
+      if (a >= 0) add(ts[a].p, 'assist', clip(ts[a].t));
     }
   }
 }

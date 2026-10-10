@@ -4,10 +4,10 @@ import { useAuth } from '../lib/auth';
 import { usePlayers, type Player } from '../lib/data';
 import {
   ATTACK_TYPES, DEFAULT_SET_GRADE, GRADED, GRADE_LABELS, SKILLS, deleteGame, fmtTime, isTagged, nextSkill, rallyResult, saveRallies, suggestTouches,
-  updateGame, useGame, type AttackType, type Game, type Grade, type Rally, type RallyEnd, type Skill, type Touch,
+  updateGame, useGame, type AttackType, type Game, type SameTeam, type Grade, type Rally, type RallyEnd, type Skill, type Touch,
 } from '../lib/games';
 import { createPlayer, type YTPlayer } from '../lib/youtube';
-import { avgGrade, computeStats, type StatKey } from '../lib/stats';
+import { avgGrade, computeStats, sameTeamIn, type StatKey } from '../lib/stats';
 import { buildModel, effectiveRatings, type RatingModel } from '../lib/engine';
 import { useEngineSettings } from '../lib/rated';
 import { createBackup } from '../lib/backups';
@@ -80,7 +80,7 @@ function Kbd({ k }: { k: string }) {
   return <span className="ml-1 hidden rounded border border-line px-1 font-mono text-[10px] text-muted lg:inline">{k}</span>;
 }
 
-function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange, onDone, onPrev, onNext, hasPrev, hasNext, sug, onSkip, serve, onServer, wonBy, needTeams, onTeams }: {
+function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange, onDone, onPrev, onNext, hasPrev, hasNext, sug, onSkip, serve, onServer, wonBy, needTeams, onTeams, sameTeam }: {
   rally: Rally | undefined; players: Player[]; name: (id?: string) => string; now: () => number;
   playing: () => boolean; togglePlay: () => void;
   onChange: (touches: Touch[], end?: RallyEnd) => void; onDone: () => void;
@@ -93,6 +93,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   wonBy: Team | null;      // which team won this rally, from its tags
   needTeams: boolean;      // teams not entered yet: tagging new rallies waits for them
   onTeams: () => void;
+  sameTeam?: SameTeam;     // from the court setup: keeps dig assists within a team
 }) {
   const saved = rally?.touches ?? [];
   const [skill, setSkill] = useState<Skill | null>(null);  // null = use the prediction
@@ -106,7 +107,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   const blocked = needTeams && !saved.length;
   const sorted = [...players].sort((a, b) => (a.number ?? 99) - (b.number ?? 99));
   const k = skill ?? nextSkill(touches);
-  const res = rally && rallyResult(rally);
+  const res = rally && rallyResult(rally, sameTeam);
   const enders = touches.map((t, i) => ({ t, i })).slice(-2).reverse();  // last touch first
 
   // at the suggested moment if paused on one; else the current time, minus reaction lag while playing
@@ -394,15 +395,22 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
 
   // ?t=<seconds> (from a player's stats) plays that rally once the player is ready
   const startAt = useRef(search.get('t'));
+  // set when a linked rally couldn't start on its own (phones block playing with sound until a tap)
+  const [tapToPlay, setTapToPlay] = useState<{ i: number; t: number } | null>(null);
+  const playLinked = useCallback((i: number, t: number) => {
+    go(i);
+    if (t - list[i].s > 3) player.current?.seekTo(t - 3, true);  // jump close to the touch
+  }, [go, list]);
   useEffect(() => {
-    if (!ready || startAt.current === null) return;
+    // wait for both the player and the game's rallies
+    if (!ready || startAt.current === null || !list.length) return;
     const t = Number(startAt.current);
     startAt.current = null;
     const i = list.findIndex(r => t >= r.s - 0.2 && t <= r.e + 0.5);
     if (i < 0) return;
-    go(i);
-    if (t - list[i].s > 3) player.current?.seekTo(t - 3, true);  // jump close to the touch
-  }, [ready, list, go]);
+    playLinked(i, t);
+    setTimeout(() => { if (player.current?.getPlayerState() !== 1) setTapToPlay({ i, t }); }, 1500);
+  }, [ready, list, playLinked]);
 
   const seekFree = (t: number) => {
     const p = player.current;
@@ -424,6 +432,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
       if (!p) return;
       const now = p.getCurrentTime();
       setClock(now);
+      if (p.getPlayerState() === 1) setTapToPlay(null);
       const r = list[cur];
       if (stepping && pending !== null && p.getPlayerState() === 1 && now >= pending + 0.3 && now < pending + 1.5) {
         p.pauseVideo();  // just after the suggested touch, so you can see who played it
@@ -498,7 +507,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
       const { tag: _t, end: _e, touches: _ts, ...rest } = r;
       return { ...rest, touches, ...(end && end.i < touches.length ? { end } : {}) };
     });
-    const res = rallyResult(updated.find(r => r.s === r0.s)!);
+    const res = rallyResult(updated.find(r => r.s === r0.s)!, sameTeamIn(game));
     const who = (pid: string) => pid === 'guest' ? 'Guest' : players?.find(p => p.id === pid)?.name ?? pid;
     const chain = touches.map(t => `${who(t.p)} ${SKILLS[t.k].toLowerCase()}`).join(' → ');
     commit(updated, r0.s, [`tag:${r0.as ?? r0.s}`, !touches.length ? `${label(r0)}: cleared tags`
@@ -589,7 +598,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
             </span>
             {mode === 'review' && <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS[r.st].cls}`}>{STATUS[r.st].label}</span>}
             {mode !== 'review' && (() => {
-              const res = rallyResult(r);
+              const res = rallyResult(r, sameTeamIn(game));
               if (res) return (
                 <span className={`truncate rounded-full px-2 py-0.5 text-xs ${res.good ? 'bg-good/20 text-good' : 'bg-bad/20 text-bad'}`}>
                   {res.label} · {name(res.who)}{res.assist && <span className="opacity-70"> (assist {name(res.assist)})</span>}{res.note && <span className="opacity-70"> ({name(res.noteWho)} {res.note})</span>}
@@ -646,7 +655,15 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
           <HighlightDialog game={game} rally={rally} players={players ?? []} onClose={() => setHighlighting(false)} />
         )}
 
-        <div ref={playerEl} className="aspect-video overflow-hidden rounded-xl bg-black" />
+        <div className="relative">
+          <div ref={playerEl} className="aspect-video overflow-hidden rounded-xl bg-black" />
+          {tapToPlay && (
+            <button onClick={() => { playLinked(tapToPlay.i, tapToPlay.t); setTapToPlay(null); }}
+              className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/60 text-lg font-semibold text-ink">
+              <span className="rounded-full bg-ball px-5 py-3 text-bg">▶ Play rally {tapToPlay.i + 1} ({fmtTime(list[tapToPlay.i]?.s ?? 0)})</span>
+            </button>
+          )}
+        </div>
         <div className="flex items-center justify-between text-sm">
           <span className="flex items-center gap-2 font-medium">
             {rally ? <>Rally {cur + 1} · {fmtTime(rally.s)}–{fmtTime(rally.e)}
@@ -722,6 +739,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
             wonBy={view && rally ? rallyWinner(view.state, rally) : null}
             needTeams={!teamsReady}
             onTeams={() => setTeamsOpen(true)}
+            sameTeam={sameTeamIn(game)}
             onPrev={() => go(cur - 1)} onNext={() => go(cur + 1)} hasPrev={cur > 0} hasNext={cur < list.length - 1} />
         )}
 
