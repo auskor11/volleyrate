@@ -1,4 +1,4 @@
-import { forcedBy, type Game, type Rally, type Skill, type Touch } from './games';
+import { DEFAULT_SET_GRADE, forcedBy, type Game, type Rally, type Skill, type Touch } from './games';
 
 export type StatKey =
   | 'serve' | 'ace' | 'serr'
@@ -56,10 +56,12 @@ const ATTEMPT: Partial<Record<Skill, StatKey>> = {
 const TYPE_KILL = { tip: 'tipkill', roll: 'rollkill' } as const;
 
 /** Grade / attack-type lists a touch belongs to (e.g. a perfect pass, a tip). */
-function detail(t: Touch): StatKey[] {
+function detail(t: Touch, finishedNotError: boolean): StatKey[] {
   const out: StatKey[] = [];
   if (t.q && (t.k === 'receive' || t.k === 'dig')) out.push(`pass${t.q}` as StatKey);
-  if (t.q && t.k === 'set') out.push(`set${t.q}` as StatKey);
+  // sets: graded, or counted as OK once the rally is tagged (a set that was the error isn't graded)
+  const sq = t.q ?? (finishedNotError ? DEFAULT_SET_GRADE : undefined);
+  if (sq && t.k === 'set') out.push(`set${sq}` as StatKey);
   if (t.k === 'attack' && t.a) out.push(t.a);
   return out;
 }
@@ -88,7 +90,8 @@ type Add = (pid: string | undefined, k: StatKey | undefined, c: Clip) => void;
 
 function addTouches(r: Rally, clip: (t: number) => Clip, add: Add) {
   const ts = r.touches!;
-  ts.forEach(t => { add(t.p, ATTEMPT[t.k], clip(t.t)); detail(t).forEach(k => add(t.p, k, clip(t.t))); });
+  const erred = r.end?.r === 'error' ? r.end.i : -1;
+  ts.forEach((t, j) => { add(t.p, ATTEMPT[t.k], clip(t.t)); detail(t, !!r.end && j !== erred).forEach(k => add(t.p, k, clip(t.t))); });
   const kill = (x: Touch) => { if (x.k === 'attack' && x.a) add(x.p, TYPE_KILL[x.a], clip(x.t)); };
   if (!r.end) return;
   const t = ts[r.end.i], prev = ts[r.end.i - 1];

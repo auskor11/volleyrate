@@ -59,6 +59,7 @@ Blocking bonus = min(15, strength × (2 × block points + 0.5 × other block tou
 **Graded metrics:**
 - Grades are optional: passes 3 perfect / 2 OK / 1 poor, sets 3 good / 2 OK / 1 poor.
 - **Scale:** the average grade is put on a 0–100% scale, so 1.0 = 0%, 2.0 = 50%, 3.0 = 100%. `n` is the number of graded touches.
+- **Ungraded sets count as OK (2).** Ungraded passes are left out.
 - **Errors are left out:** a touch that ended the rally as an error isn't graded here. Errors already count in Set efficiency and Ball control, so they aren't counted twice.
 
 - **`(metric − benchmark) × 100`**: how many percentage points better or worse than the team the player is.
@@ -71,7 +72,7 @@ Blocking bonus = min(15, strength × (2 × block points + 0.5 × other block tou
 - The benchmark is the whole team's pooled metric over the first sessions that hold 5 tagged games.
 - It always uses whole sessions: every game dated on or before the 5th game's date is included.
 - After that it stays fixed. If the team improves, everyone's ratings go up, rather than the average being reset each time.
-- **Graded metrics** (set and pass quality) count from the first sessions holding 5 games **that have grades**, since older games have none. Until 5 graded games exist, their benchmark uses whatever graded games there are.
+- **Graded metrics** (set and pass quality) count from the first sessions holding 5 games **that have grades**, since older games have none. Ungraded sets count as OK, so set quality's benchmark comes from your first 5 games and is about 50% (an OK set). Until 5 graded games exist, their benchmark uses whatever graded games there are.
 - It uses plain (unweighted) counts from every player except guests.
 
 ### Recent games count more

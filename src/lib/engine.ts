@@ -12,7 +12,7 @@
 // - Recent sessions count more: a session's weight halves every 8 sessions (all games on one date equal).
 // - Only rallies tagged touch-by-touch (with a result) count; quick point tags lack attempt counts.
 // - No caps beyond the 0–99 scale.
-import { forcedBy, gameWeight, isApplied, type Game, type Skill } from './games';
+import { DEFAULT_SET_GRADE, forcedBy, gameWeight, isApplied, type Game, type Skill } from './games';
 import type { Player } from './data';
 import type { Ratings } from './ratings';
 
@@ -83,10 +83,11 @@ function gameCounts(g: Game): Record<string, Counts> {
     ts.forEach((t, j) => {
       c(t.p).touches++;
       const a = ATT[t.k]; if (a) c(t.p)[a]++;
-      // optional grades, on touches that weren't the rally-ending error (errors count elsewhere)
-      if (t.q && j !== erred) {
-        if (t.k === 'receive' || t.k === 'dig') { c(t.p).passQ += t.q; c(t.p).passN++; }
-        if (t.k === 'set') { c(t.p).setQ += t.q; c(t.p).setN++; }
+      // optional grades, on touches that weren't the rally-ending error (errors count elsewhere);
+      // a set nobody graded counts as OK
+      if (j !== erred) {
+        if (t.q && (t.k === 'receive' || t.k === 'dig')) { c(t.p).passQ += t.q; c(t.p).passN++; }
+        if (t.k === 'set') { c(t.p).setQ += t.q ?? DEFAULT_SET_GRADE; c(t.p).setN++; }
       }
     });
     const t = ts[r.end.i], prev = ts[r.end.i - 1];

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth';
 import { usePlayers, type Player } from '../lib/data';
 import {
-  ATTACK_TYPES, GRADED, GRADE_LABELS, SKILLS, deleteGame, fmtTime, isTagged, nextSkill, rallyResult, saveRallies, suggestTouches,
+  ATTACK_TYPES, DEFAULT_SET_GRADE, GRADED, GRADE_LABELS, SKILLS, deleteGame, fmtTime, isTagged, nextSkill, rallyResult, saveRallies, suggestTouches,
   updateGame, useGame, type AttackType, type Game, type Grade, type Rally, type RallyEnd, type Skill, type Touch,
 } from '../lib/games';
 import { createPlayer, type YTPlayer } from '../lib/youtube';
@@ -146,7 +146,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   const dt = !pre && di >= 0 ? saved[di] : undefined;
   const detailOpts: { label: string; on: boolean; set: () => void }[] = !dt ? []
     : GRADED.includes(dt.k) ? ([3, 2, 1] as Grade[]).map(q => ({
-        label: `${q} ${GRADE_LABELS[dt.k === 'set' ? 'set' : 'pass'][q]}`, on: dt.q === q,
+        label: `${q} ${GRADE_LABELS[dt.k === 'set' ? 'set' : 'pass'][q]}`, on: (dt.q ?? (dt.k === 'set' ? DEFAULT_SET_GRADE : undefined)) === q,
         set: () => setDetail(di, x => { const { q: _q, ...rest } = x; return dt.q === q ? rest : { ...rest, q }; }),
       }))
     : dt.k === 'attack' ? (['spike', 'tip', 'roll'] as const).map(a => ({
@@ -263,7 +263,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
           {detailOpts.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="w-full text-[11px] text-muted">
-                {name(dt!.p)}'s {SKILLS[dt!.k].toLowerCase()}{GRADED.includes(dt!.k) ? ' (optional grade)' : ''}
+                {name(dt!.p)}'s {SKILLS[dt!.k].toLowerCase()}{dt!.k === 'set' ? ' (OK unless you grade it)' : GRADED.includes(dt!.k) ? ' (optional grade)' : ''}
               </span>
               {detailOpts.map((o, i) => (
                 <button key={o.label} onClick={o.set}

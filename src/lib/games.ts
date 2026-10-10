@@ -53,6 +53,8 @@ export interface Touch { p: string; k: Skill; t: number; q?: Grade; a?: AttackTy
 export type Grade = 1 | 2 | 3;
 export type AttackType = 'tip' | 'roll';
 export const ATTACK_TYPES: Record<'spike' | AttackType, string> = { spike: 'Spike', tip: 'Tip', roll: 'Smart placement' };
+/** A set nobody graded counts as OK. */
+export const DEFAULT_SET_GRADE: Grade = 2;
 /** Skills that can be graded 3 / 2 / 1. */
 export const GRADED: Skill[] = ['receive', 'dig', 'set'];
 export const GRADE_LABELS: Record<'pass' | 'set', Record<Grade, string>> = {
