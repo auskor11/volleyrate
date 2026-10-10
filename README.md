@@ -24,6 +24,7 @@
 - **Stats and ratings:**
   - Tagged games produce a box score and per-player stats, with links to the clips.
   - Once the admin applies a game, its stats move the ratings. See **[docs/ratings.md](docs/ratings.md)** for exactly how.
+- **Several cameras per game:** add more videos of the same game (e.g. a camera behind Team A), switch camera while watching, reviewing or tagging without losing your place, and line them up automatically from the ball-contact sounds (with ±0.1 s nudges). Each kind of camera (side, behind a team) has its own rally detector and retraining (`src/lib/cameras.ts`).
 - **Highlights:** bookmark rallies to a player's profile and play them back as a reel.
 - **Admin:** roster and access, starting ratings, how sensitive ratings are to stats, rating backups, and retraining the detector.
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { DETECTOR_VERSION, detectorSupported, runDetector, type DetectorProgress, type DetectorResult } from '../lib/detector';
+import { CameraFields, defaultCamera, type CameraChoice } from '../components/CameraFields';
 import { createGame, fmtTime, liveRallies, logHistory, useGames, type Game } from '../lib/games';
 import { createPlayer, parseYouTubeId, thumbnail, type YTPlayer } from '../lib/youtube';
 
@@ -113,6 +114,7 @@ export function AddGame() {
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
+  const [camera, setCamera] = useState<CameraChoice>(defaultCamera());
   const cancelRef = useRef<() => void>(undefined);
 
   // YouTube preview + duration
@@ -134,14 +136,14 @@ export function AddGame() {
 
   useEffect(() => () => cancelRef.current?.(), []);
 
-  async function onFile(f: File) {
+  async function onFile(f: File, kind = camera.kind) {
     cancelRef.current?.();
     setFile(f); setResult(null); setError(''); setProgress(null); setFileDuration(null);
     if (!title) setTitle(f.name.replace(/\.[^.]+$/, ''));
     setDate(new Date(f.lastModified).toISOString().slice(0, 10));
     let lock: WakeLockSentinel | null = null;
     try { lock = await navigator.wakeLock.request('screen'); } catch { /* not supported */ }
-    const run = runDetector(f, setProgress, i => { if (i.duration) setFileDuration(i.duration); });
+    const run = runDetector(f, setProgress, i => { if (i.duration) setFileDuration(i.duration); }, false, kind);
     cancelRef.current = run.cancel;
     try {
       setResult(await run.result);
@@ -170,6 +172,10 @@ export function AddGame() {
         rating: { applied: false },  // stats count toward ratings once an admin applies this game
         reviewed: false, createdBy: user?.email ?? '',
         detector: { version: DETECTOR_VERSION, elapsed: Math.round(result!.elapsed), device: result!.userAgent },
+        // which camera this video is (the side one unless chosen otherwise); more cameras can be added on the game page
+        ...(camera.kind !== 'side' ? { camera: camera.kind } : {}),
+        ...(camera.name.trim() && camera.name.trim() !== 'Side' ? { cameraName: camera.name.trim() } : {}),
+        ...(camera.kind === 'back' && camera.behind ? { behind: camera.behind } : {}),
       });
       logHistory(id, user, [`Added the game · ${result!.rallies.length} rallies detected`]).catch(() => {});
       nav(`/games/${id}?review=1`);
@@ -196,6 +202,10 @@ export function AddGame() {
 
       <section className={step}>
         <h2 className="font-semibold">2 · Find the rallies</h2>
+        <p className="mt-1 text-sm text-muted">Which camera is this? Each kind of camera has its own rally detector.</p>
+        <div className="mt-2">
+          <CameraFields value={camera} onChange={c => { setCamera(c); if (file && c.kind !== camera.kind) onFile(file, c.kind); }} />
+        </div>
         <p className="mt-1 text-sm text-muted">
           Pick the <b>original video file</b> (the one you uploaded). It's processed on this device and never uploaded.
           On iPhone, choose it from Files; picking from Photos may compress it.

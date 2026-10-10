@@ -63,3 +63,20 @@ export async function createPlayer(el: HTMLElement, videoId: string, onStateChan
 }
 
 export const thumbnail = (id: string) => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
+
+/**
+ * A player for a camera whose video is shifted from the game's timeline: everything the app reads and seeks
+ * is in game time (camera time = game time + offset).
+ */
+export function withOffset(p: YTPlayer, offset: () => number): YTPlayer {
+  return {
+    playVideo: () => p.playVideo(),
+    pauseVideo: () => p.pauseVideo(),
+    seekTo: (t, ahead) => p.seekTo(Math.max(0, t + offset()), ahead),
+    getCurrentTime: () => p.getCurrentTime() - offset(),
+    getDuration: () => p.getDuration() - offset(),
+    getPlayerState: () => p.getPlayerState(),
+    loadVideoById: o => p.loadVideoById(o),
+    destroy: () => p.destroy(),
+  };
+}

@@ -4,53 +4,68 @@
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Game } from './games';
+import { cameras, type CameraKind } from './cameras';
 
 export interface Model { mean: number[]; scale: number[]; coef: number[]; intercept: number }
 export interface Row { f: number[]; y: 0 | 1 }
 export interface Eval { real: number; falses: number; realKept: number; falseKept: number }
 
 export const MIN_PROB = 0.4;
-const configRef = () => doc(db, 'config', 'detector');
+// each kind of camera keeps its own model: config/detector (side) and config/detector-back
+const configRef = (kind: CameraKind = 'side') => doc(db, 'config', kind === 'side' ? 'detector' : `detector-${kind}`);
 
-/** Model the detector should use: the retrained one if an admin activated it, else the bundled one. */
-export async function loadActiveModel(): Promise<Model> {
+/**
+ * Model the detector should use for a kind of camera: the retrained one if an admin activated it, else
+ * the bundled one (side cameras only; other cameras start with none and keep every candidate clip).
+ */
+export async function loadActiveModel(kind: CameraKind = 'side'): Promise<Model | null> {
   try {
-    const snap = await getDoc(configRef());
+    const snap = await getDoc(configRef(kind));
     if (snap.exists() && snap.data().model) return snap.data().model as Model;
   } catch { /* fall back to the bundled model */ }
-  return fetch('/detector/model.json').then(r => r.json());
+  return kind === 'side' ? fetch('/detector/model.json').then(r => r.json()) : null;
 }
 
-export async function activeModelInfo(): Promise<{ trainedAt?: Date; n?: number; by?: string } | null> {
-  const snap = await getDoc(configRef());
+export async function activeModelInfo(kind: CameraKind = 'side'): Promise<{ trainedAt?: Date; n?: number; by?: string } | null> {
+  const snap = await getDoc(configRef(kind));
   if (!snap.exists()) return null;
   const d = snap.data();
   return { trainedAt: d.trainedAt?.toDate?.(), n: d.n, by: d.by };
 }
 
-export async function activateModel(model: Model, n: number, by: string) {
-  await setDoc(configRef(), { model, n, by, trainedAt: serverTimestamp() });
+export async function activateModel(model: Model, n: number, by: string, kind: CameraKind = 'side') {
+  await setDoc(configRef(kind), { model, n, by, trainedAt: serverTimestamp() });
 }
 
-export async function resetModel() {
-  await setDoc(configRef(), { model: null, n: null, by: null, trainedAt: serverTimestamp() });
+export async function resetModel(kind: CameraKind = 'side') {
+  await setDoc(configRef(kind), { model: null, n: null, by: null, trainedAt: serverTimestamp() });
 }
 
-/** Training rows from reviewed games: a candidate is real if it overlaps a rally that survived review. */
-export function rowsFromGames(games: Game[]): Row[] {
+/**
+ * Training rows for one kind of camera, from reviewed games: a candidate is real if it overlaps a rally
+ * that survived review. Extra cameras share the game's rallies, shifted by their offset, so reviewing a
+ * game once gives training data for every camera that filmed it.
+ */
+export function rowsFromGames(games: Game[], kind: CameraKind = 'side'): Row[] {
   const rows: Row[] = [];
   for (const g of games) {
-    if (!g.reviewed || !g.segments?.length) continue;
+    if (!g.reviewed) continue;
     const real = g.rallies.filter(r => r.st !== 'bad');
-    for (const s of g.segments) {
-      const hit = real.some(r => Math.min(r.e, s.b) - Math.max(r.s, s.a) > 0);
-      rows.push({ f: s.f, y: hit ? 1 : 0 });
+    for (const cam of cameras(g)) {
+      if (cam.kind !== kind || !cam.segments?.length) continue;
+      for (const s of cam.segments) {
+        const a = s.a - cam.offset, b = s.b - cam.offset;  // camera time → game time
+        const hit = real.some(r => Math.min(r.e, b) - Math.max(r.s, a) > 0);
+        rows.push({ f: s.f, y: hit ? 1 : 0 });
+      }
     }
   }
   return rows;
 }
 
-export async function baseRows(): Promise<Row[]> {
+/** The lab's reviewed clips (side camera only). */
+export async function baseRows(kind: CameraKind = 'side'): Promise<Row[]> {
+  if (kind !== 'side') return [];
   const d = await fetch('/detector/train_base.json').then(r => r.json());
   return d.rows;
 }

@@ -1,5 +1,5 @@
 // Background worker: read MP4 -> hardware-decode video + audio (WebCodecs) -> analyze -> detect rallies.
-// Messages in:  { source: File | { url }, model, opts: { mode?: 'webgl'|'rgba'|'canvas', audio?: 'adts', maxSeconds?, noCandidates?, audioOnly? } }
+// Messages in:  { source: File | { url }, model, opts: { mode?: 'webgl'|'rgba'|'canvas', audio?: 'adts', maxSeconds?, noCandidates?, audioOnly?, params? } }
 //                audioOnly: skip video, only return contact-sound peaks (fast)
 //                { type: 'pcm', seq, pcm }   (reply to an 'adts' request, see AdtsAudio)
 // Messages out: { type: 'info' | 'progress' | 'done' | 'error' | 'adts', ... }
@@ -254,7 +254,8 @@ async function run({ source, model, opts = {} }) {
   if (audioDecoder) audioDecoder.close();
 
   const audio = au ? au.finish() : { tf: new Float64Array(0), flux: new Float64Array(0) };
-  const { rallies, segments } = opts.audioOnly ? { rallies: [], segments: [] } : detectRallies(cand, audio, model);
+  // opts.params: per-camera overrides of PARAMS (e.g. a camera behind a team); model null = keep every candidate
+  const { rallies, segments } = opts.audioOnly ? { rallies: [], segments: [] } : detectRallies(cand, audio, model, { ...PARAMS, ...(opts.params || {}) });
   const peaks = onsetPeaks(audio);
   post('done', {
     rallies, segments, peaks, frames, candidates: opts.noCandidates ? undefined : cand, mode, colour, timing,

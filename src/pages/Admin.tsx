@@ -5,6 +5,7 @@ import {
 } from '../lib/data';
 import { CATEGORIES, POSITIONS, overall, type Position, type Ratings } from '../lib/ratings';
 import { suggestTouches, useGames, type Game } from '../lib/games';
+import { CAMERA_KINDS, cameras, type CameraKind } from '../lib/cameras';
 import { buildModel, effectiveRatings, METRICS, DEFAULT_SETTINGS, type EngineSettings, type MetricKey } from '../lib/engine';
 import { saveEngineSettings, useEngineSettings, useRatedPlayers } from '../lib/rated';
 import { createBackup, restoreBackup, useBackups } from '../lib/backups';
@@ -293,21 +294,23 @@ function EvalRow({ label, e }: { label: string; e: Eval }) {
 function Detector() {
   const { user } = useAuth();
   const games = useGames();
+  const [kind, setKind] = useState<CameraKind>('side');  // each kind of camera has its own detector
   const [info, setInfo] = useState<Awaited<ReturnType<typeof activeModelInfo>>>(null);
   const [res, setRes] = useState<{ model: Model; n: number; cur: Eval; next: Eval } | null>(null);
   const [busy, setBusy] = useState('');
-  useEffect(() => { activeModelInfo().then(setInfo); }, []);
+  const [base, setBase] = useState(0);
+  useEffect(() => { activeModelInfo(kind).then(setInfo); baseRows(kind).then(r => setBase(r.length)); setRes(null); }, [kind]);
   if (!games) return null;
   const reviewed = games.filter(g => g.reviewed);
-  const usable = reviewed.filter(g => g.segments?.length);
-  const fresh = rowsFromGames(games);
+  const usable = reviewed.filter(g => cameras(g).some(c => c.kind === kind && c.segments?.length));
+  const fresh = rowsFromGames(games, kind);
 
   async function run() {
     setBusy('Training…'); setRes(null);
     await new Promise(r => setTimeout(r, 30));
-    const rows = [...(await baseRows()), ...fresh];
-    const current = await loadActiveModel();
-    const cur = evaluate(rows, r => prob(r.f, current));
+    const rows = [...(await baseRows(kind)), ...fresh];
+    const current = await loadActiveModel(kind);
+    const cur = evaluate(rows, r => (current ? prob(r.f, current) : 1));
     const next = leaveOneOut(rows);
     setRes({ model: train(rows), n: rows.length, cur, next });
     setBusy('');
@@ -315,8 +318,16 @@ function Detector() {
 
   return (
     <div className="space-y-4">
+      <div className="flex gap-1 rounded-xl bg-surface p-1">
+        {(Object.keys(CAMERA_KINDS) as CameraKind[]).map(k => (
+          <button key={k} onClick={() => setKind(k)}
+            className={`flex-1 rounded-lg py-2 text-sm font-semibold ${kind === k ? 'bg-raised text-ink' : 'text-muted'}`}>
+            {CAMERA_KINDS[k].label} camera
+          </button>
+        ))}
+      </div>
       <section className={card}>
-        <h2 className="font-semibold">Improve the rally detector</h2>
+        <h2 className="font-semibold">Improve the {CAMERA_KINDS[kind].label.toLowerCase()} camera's rally detector</h2>
         <p className="mt-1 text-sm text-muted">
           Retrains the part of the detector that decides which ball flights are real rallies, using every game
           that's been reviewed (Finish review). Fewer false clips is what improves; rallies the ball tracker never
@@ -326,11 +337,22 @@ function Detector() {
           <li>Reviewed games: <b>{reviewed.length}</b> ({usable.length} with detector data; games added before this
             update don't have it)</li>
           <li>New training examples: <b>{fresh.length}</b> ({fresh.filter(r => r.y).length} real,{' '}
-            {fresh.filter(r => !r.y).length} false), plus 106 from the original lab review</li>
-          <li>Model in use: <b>{info?.trainedAt && info.n ? `retrained ${info.trainedAt.toLocaleDateString()} on ${info.n} examples` : 'original (lab)'}</b></li>
+            {fresh.filter(r => !r.y).length} false){base ? `, plus ${base} from the original lab review` : ''}</li>
+          <li>Model in use: <b>{info?.trainedAt && info.n ? `retrained ${info.trainedAt.toLocaleDateString()} on ${info.n} examples`
+            : kind === 'side' ? 'original (lab)' : 'none yet: keeps every candidate clip'}</b></li>
         </ul>
-        <button className={`${btn} mt-4`} disabled={!!busy || !fresh.length} onClick={run}>{busy || 'Train new model'}</button>
-        {!fresh.length && <p className="mt-2 text-xs text-muted">Review a newly added game first.</p>}
+        <button className={`${btn} mt-4`} onClick={run}
+          disabled={!!busy || !fresh.length || (!base && !(fresh.some(r => r.y) && fresh.some(r => !r.y)))}>{busy || 'Train new model'}</button>
+        {!fresh.length && <p className="mt-2 text-xs text-muted">
+          {kind === 'side' ? 'Review a newly added game first.'
+            : 'Add a game with this camera (or add it as an extra camera to a game) using its original video file, then review the game.'}
+        </p>}
+        {kind !== 'side' && (
+          <p className="mt-2 text-xs text-muted">
+            Reviewing a game once is enough: an extra camera shares the game's rallies, so its clips are labelled automatically.
+            Retraining this camera never changes the side camera's detector.
+          </p>
+        )}
       </section>
 
       {res && (
@@ -354,7 +376,7 @@ function Detector() {
           </p>
           <div className="mt-3 flex gap-2">
             <button className={btn} disabled={!!busy}
-              onClick={async () => { setBusy('Saving…'); await activateModel(res.model, res.n, user?.email ?? ''); setInfo(await activeModelInfo()); setRes(null); setBusy(''); }}>
+              onClick={async () => { setBusy('Saving…'); await activateModel(res.model, res.n, user?.email ?? '', kind); setInfo(await activeModelInfo(kind)); setRes(null); setBusy(''); }}>
               Use new model
             </button>
             <button className="rounded-lg border border-line px-4 py-2 text-sm" onClick={() => setRes(null)}>Discard</button>
@@ -366,8 +388,8 @@ function Detector() {
 
       {info?.n ? (
         <button className="text-sm text-muted underline"
-          onClick={async () => { if (confirm('Go back to the original detector model?')) { await resetModel(); setInfo(await activeModelInfo()); } }}>
-          Reset to the original model
+          onClick={async () => { if (confirm(`Go back to the ${kind === 'side' ? 'original' : 'untrained'} ${CAMERA_KINDS[kind].label.toLowerCase()} detector?`)) { await resetModel(kind); setInfo(await activeModelInfo(kind)); } }}>
+          Reset to the {kind === 'side' ? 'original' : 'untrained'} model
         </button>
       ) : null}
     </div>

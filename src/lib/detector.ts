@@ -1,5 +1,6 @@
 // Runs the rally detector (public/detector, copied from rally-lab/web) in a worker on this device.
 import { loadActiveModel } from './training';
+import { CAMERA_KINDS, type CameraKind } from './cameras';
 import type { Segment } from './games';
 
 export interface DetectorProgress { videoTime: number; duration: number; elapsed: number }
@@ -19,11 +20,12 @@ export function runDetector(
   onProgress: (p: DetectorProgress) => void,
   onInfo?: (info: { duration?: number; codec?: string }) => void,
   audioOnly = false,
+  kind: CameraKind = 'side',
 ): { result: Promise<DetectorResult>; cancel: () => void } {
   const worker = new Worker('/detector/worker.js');
   let adtsQueue = Promise.resolve();
   const result = (async () => {
-    const model = await loadActiveModel();
+    const model = await loadActiveModel(kind);
     return new Promise<DetectorResult>((resolve, reject) => {
       worker.onerror = e => reject(new Error(e.message));
       worker.onmessage = e => {
@@ -34,7 +36,7 @@ export function runDetector(
         else if (m.type === 'error') reject(new Error(m.message));
         else if (m.type === 'done') resolve(m);
       };
-      worker.postMessage({ source: file, model, opts: { noCandidates: true, audioOnly } });
+      worker.postMessage({ source: file, model, opts: { noCandidates: true, audioOnly, params: CAMERA_KINDS[kind].params } });
     });
   })().finally(() => worker.terminate());
   return { result, cancel: () => worker.terminate() };

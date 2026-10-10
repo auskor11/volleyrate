@@ -6,7 +6,9 @@ import {
   ATTACK_TYPES, DEFAULT_SET_GRADE, GRADED, GRADE_LABELS, SKILLS, guestName, isGuest, deleteGame, fmtTime, isTagged, nextSkill, rallyResult, saveRallies, suggestTouches,
   updateGame, useGame, type AttackType, type Game, type SameTeam, type Grade, type Rally, type RallyEnd, type Skill, type Touch,
 } from '../lib/games';
-import { createPlayer, type YTPlayer } from '../lib/youtube';
+import { createPlayer, withOffset, type YTPlayer } from '../lib/youtube';
+import { cameraLabel, cameras } from '../lib/cameras';
+import { AddCamera } from '../components/AddCamera';
 import { avgGrade, computeStats, sameTeamIn, type StatKey } from '../lib/stats';
 import { buildModel, effectiveRatings, type RatingModel } from '../lib/engine';
 import { useEngineSettings } from '../lib/rated';
@@ -367,15 +369,54 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   const pendingIdx = sugs.findIndex(t => !handled(t));
   const pending = pendingIdx >= 0 ? sugs[pendingIdx] : null;
 
-  // YouTube player
+  // cameras: the game's own video plus any added ones; switching keeps the same moment playing
+  const cams = cameras(game);
+  const [camId, setCamId] = useState('main');
+  const cam = cams.find(c => c.id === camId) ?? cams[0];
+  const offsetRef = useRef(cam.offset);
+  offsetRef.current = cam.offset;
+  const resumeAt = useRef<{ t: number; playing: boolean } | null>(null);
+  const settleUntil = useRef(0);  // just after a camera switch the new video reports stale times: ignore them
+  const [addingCam, setAddingCam] = useState(false);
+  const switchCam = (id: string) => {
+    if (id === cam.id) return;
+    const p = player.current;
+    resumeAt.current = p ? { t: p.getCurrentTime(), playing: p.getPlayerState() === 1 } : null;
+    setCamId(id);
+  };
+  // fine-tune how a camera lines up: keep showing the same game moment while shifting it
+  const nudge = async (d: number) => {
+    if (cam.id === 'main') return;
+    const t = player.current?.getCurrentTime();
+    const offset = Math.round((cam.offset + d) * 100) / 100;
+    offsetRef.current = offset;
+    if (t !== undefined) player.current?.seekTo(t, true);
+    await updateGame(game.id, { angles: (game.angles ?? []).map(a => a.id === cam.id ? { ...a, offset } : a) });
+  };
+  const removeCam = async () => {
+    if (cam.id === 'main' || !confirm(`Remove the "${cam.name}" camera from this game? (The YouTube video itself stays.)`)) return;
+    setCamId('main');
+    await updateGame(game.id, { angles: (game.angles ?? []).filter(a => a.id !== cam.id) });
+    logHistory(game.id, user, [`Removed camera "${cam.name}"`]).catch(() => {});
+  };
+
+  // YouTube player (the current camera's video; times are converted to the game's timeline)
   useEffect(() => {
     if (!playerEl.current) return;
     let dead = false;
+    setReady(false);
     const host = document.createElement('div');
     playerEl.current.replaceChildren(host);
-    createPlayer(host, game.youtubeId).then(p => { if (dead) p.destroy(); else { player.current = p; setReady(true); } });
+    createPlayer(host, cam.youtubeId).then(p => {
+      if (dead) { p.destroy(); return; }
+      player.current = withOffset(p, () => offsetRef.current);
+      setReady(true);
+      const r = resumeAt.current;
+      resumeAt.current = null;
+      if (r) { settleUntil.current = Date.now() + 2000; player.current.seekTo(r.t, true); if (r.playing) player.current.playVideo(); }
+    });
     return () => { dead = true; player.current?.destroy(); player.current = null; };
-  }, [game.youtubeId]);
+  }, [cam.youtubeId]);
 
   // "clip" = we started a rally and should stop at its end; any seek away turns it off (free play)
   const clip = useRef(false);
@@ -453,7 +494,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
         setAtSug(pending);
         return;
       }
-      if (!clip.current || !r || p.getPlayerState() !== 1) return;  // 1 = playing
+      if (!clip.current || !r || p.getPlayerState() !== 1 || Date.now() < settleUntil.current) return;  // 1 = playing
       if (now < r.s - 1 || now > r.e + 1.5) { clip.current = false; return; }  // viewer seeked away
       if (now >= r.e) {
         if (playAll && cur < list.length - 1) go(cur + 1);
@@ -669,6 +710,26 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
           <HighlightDialog game={game} rally={rally} players={players ?? []} onClose={() => setHighlighting(false)} />
         )}
 
+        {addingCam && <AddCamera game={game} onClose={() => setAddingCam(false)} />}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          {cams.length > 1 && cams.map(c => (
+            <button key={c.id} onClick={() => switchCam(c.id)}
+              className={`rounded-md border px-2.5 py-1 font-semibold ${c.id === cam.id ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>
+              🎥 {cameraLabel(c)}
+            </button>
+          ))}
+          {!samplePlayers && <button onClick={() => setAddingCam(true)} className="rounded-md border border-dashed border-line px-2.5 py-1 text-muted">+ Add camera</button>}
+          {cam.id !== 'main' && (
+            <span className="ml-auto flex items-center gap-1 text-muted">
+              <span title={cam.sync ? `Lined up by sound: ${cam.sync.matched} of ${cam.sync.total} contact sounds matched` : 'Not lined up by sound'}>
+                {cam.offset >= 0 ? '+' : ''}{cam.offset.toFixed(2)} s{cam.sync ? ' · synced' : ''}
+              </span>
+              <button onClick={() => nudge(-0.1)} className="rounded border border-line px-1.5">−0.1</button>
+              <button onClick={() => nudge(0.1)} className="rounded border border-line px-1.5">+0.1</button>
+              <button onClick={removeCam} className="rounded border border-line px-1.5 text-bad" title="Remove this camera">✕</button>
+            </span>
+          )}
+        </div>
         <div className="relative">
           <div ref={playerEl} className="aspect-video overflow-hidden rounded-xl bg-black" />
           {tapToPlay && (

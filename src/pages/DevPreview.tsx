@@ -52,6 +52,7 @@ export function DevGame() {
           .map((n, i) => ({ id: n.toLowerCase().replace(' ', '-'), name: n, number: [1, 11, 5, 83, 10, 81, 4, 9, 8, 17][i], positions: ['OH'], ratings: {} }))} game={{
           id: 'dev', title: 'Sample game', date: '2026-09-26', youtubeId: 'M7lc1UVf-VE', duration: 1340,
           rallies, reviewed: false, createdBy: 'dev', peaks: devSample.peaks,
+          angles: [{ id: 'back1', name: 'Back', kind: 'back', behind: 'a', youtubeId: 'aqz-KE-bpKQ', offset: 5, sync: { matched: 120, total: 400 } }],
           court: location.search.includes('noteams') ? undefined : {
             a: { pos: ['alex', 'ben', 'chris', 'dana', 'eli', 'jo'], roles: ['OH', 'S', 'MB', 'OH', 'OPP', 'L'], bench: ['ivan'], mb: 'ivan' },
             b: { pos: ['finn', 'gabe', 'hana', 'guest', 'guest', 'guest'], roles: ['OH', 'S', 'MB', 'OH', 'OPP', 'L'], bench: [] },
