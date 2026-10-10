@@ -227,7 +227,7 @@ export async function saveRallies(id: string, rallies: Rally[]) {
   await updateDoc(doc(db, 'games', id), { rallies: sorted, updatedAt: serverTimestamp() });
 }
 
-export async function updateGame(id: string, patch: Partial<Pick<Game, 'title' | 'date' | 'reviewed' | 'peaks' | 'court' | 'angles' | 'camera' | 'cameraName' | 'behind'>>) {
+export async function updateGame(id: string, patch: Partial<Pick<Game, 'title' | 'date' | 'reviewed' | 'peaks' | 'segments' | 'court' | 'angles' | 'camera' | 'cameraName' | 'behind'>>) {
   await updateDoc(doc(db, 'games', id), patch);
 }
 

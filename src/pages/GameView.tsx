@@ -9,6 +9,7 @@ import {
 import { createPlayer, withOffset, type YTPlayer } from '../lib/youtube';
 import { cameraLabel, cameras } from '../lib/cameras';
 import { AddCamera } from '../components/AddCamera';
+import { RefreshDetector } from '../components/RefreshDetector';
 import { avgGrade, computeStats, sameTeamIn, type StatKey } from '../lib/stats';
 import { buildModel, effectiveRatings, type RatingModel } from '../lib/engine';
 import { useEngineSettings } from '../lib/rated';
@@ -378,6 +379,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   const resumeAt = useRef<{ t: number; playing: boolean } | null>(null);
   const settleUntil = useRef(0);  // just after a camera switch the new video reports stale times: ignore them
   const [addingCam, setAddingCam] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const switchCam = (id: string) => {
     if (id === cam.id) return;
     const p = player.current;
@@ -711,6 +713,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
         )}
 
         {addingCam && <AddCamera game={game} onClose={() => setAddingCam(false)} />}
+        {refreshing && <RefreshDetector game={game} cam={cam} onClose={() => setRefreshing(false)} />}
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           {cams.length > 1 && cams.map(c => (
             <button key={c.id} onClick={() => switchCam(c.id)}
@@ -719,6 +722,10 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
             </button>
           ))}
           {!samplePlayers && <button onClick={() => setAddingCam(true)} className="rounded-md border border-dashed border-line px-2.5 py-1 text-muted">+ Add camera</button>}
+          {!samplePlayers && game.reviewed && (
+            <button onClick={() => setRefreshing(true)} className="rounded-md border border-dashed border-line px-2.5 py-1 text-muted"
+              title={`Re-run the ${cam.name} camera's rally detector to refresh its training examples (rallies stay as reviewed)`}>⟳ Detector data</button>
+          )}
           {cam.id !== 'main' && (
             <span className="ml-auto flex items-center gap-1 text-muted">
               <span title={cam.sync ? `Lined up by sound: ${cam.sync.matched} of ${cam.sync.total} contact sounds matched` : 'Not lined up by sound'}>

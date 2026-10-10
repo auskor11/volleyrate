@@ -11,10 +11,14 @@ export type CameraKind = 'side' | 'back';
 
 export const CAMERA_KINDS: Record<CameraKind, { label: string; params: Record<string, number> }> = {
   side: { label: 'Side', params: {} },
-  // Provisional, from one still of the court: the ball is "above head height" down to about the net's top in
-  // this view, and it mostly flies towards / away from the camera, so the sideways check is nearly off.
-  // To be tuned on the first back-camera games.
-  back: { label: 'Behind a team', params: { y_max: 200, min_xrange: 10 } },
+  // Tuned in rally-lab (tune_camera.py) on the reviewed "Back Angle" game (22 Aug, 94 rallies): found 81/94
+  // with 16% false clips, up from 58/94. This view: "above head height" is about the net's top; the ball
+  // flies mostly towards / away from the camera (little sideways travel); contacts sound much quieter
+  // than from the side, so the sound rules are far looser; slightly longer gaps inside a rally.
+  back: {
+    label: 'Behind a team',
+    params: { y_max: 200, min_xrange: 10, serve_peak: 5, hit_rate: 0.6, min_hits: 2, loud: 6, min_loud: 2, gap: 5 },
+  },
 };
 
 export interface Angle {
