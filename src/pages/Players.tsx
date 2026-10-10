@@ -144,7 +144,7 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
             <ul className="mt-1 max-h-72 divide-y divide-line overflow-y-auto text-sm">
               {st[open].map((cl, i) => (
                 <li key={`${cl.gameId}-${cl.t}-${i}`}>
-                  <Link to={`/games/${cl.gameId}?t=${cl.t}`} className="flex justify-between py-2">
+                  <Link to={`/games/${cl.gameId}?t=${cl.t}&r=${cl.s}`} className="flex justify-between py-2">
                     <span className="truncate">{cl.title} <span className="text-muted">· {cl.date}</span></span>
                     <span className="tabular-nums text-ball" title={`Touch at ${fmtTime(cl.t)}`}>▶ rally {fmtTime(cl.s)}</span>
                   </Link>

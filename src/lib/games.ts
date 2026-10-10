@@ -46,10 +46,16 @@ export const SKILLS = {
 } as const;
 export type Skill = keyof typeof SKILLS;
 
-// p = player id or 'guest'; t = video time of the touch.
+// p = player id or a guest ('guest-a' / 'guest-b': a guest on team A / B; plain 'guest' in older tags);
+// t = video time of the touch.
 // Optional detail: q = quality of a receive / dig / set (3 perfect or good, 2 OK, 1 poor);
 // a = attack type when it isn't a spike (missing = spike).
 export interface Touch { p: string; k: Skill; t: number; q?: Grade; a?: AttackType }
+
+/** Guests are tagged by team so the app knows their side (older tags just say 'guest'). */
+export const isGuest = (p?: string) => !!p && (p === 'guest' || p.startsWith('guest-'));
+export const guestTeam = (p: string): 'a' | 'b' | null => (p === 'guest-a' ? 'a' : p === 'guest-b' ? 'b' : null);
+export const guestName = (p: string) => (p === 'guest-a' ? 'Guest A' : p === 'guest-b' ? 'Guest B' : 'Guest');
 export type Grade = 1 | 2 | 3;
 export type AttackType = 'tip' | 'roll';
 export const ATTACK_TYPES: Record<'spike' | AttackType, string> = { spike: 'Spike', tip: 'Tip', roll: 'Smart placement' };

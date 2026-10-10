@@ -1,4 +1,4 @@
-import { DEFAULT_SET_GRADE, assistIndex, forcedBy, type Game, type Rally, type SameTeam, type Skill, type Touch } from './games';
+import { DEFAULT_SET_GRADE, assistIndex, forcedBy, isGuest, type Game, type Rally, type SameTeam, type Skill, type Touch } from './games';
 import { gameSetup, teamOf } from './rotation';
 
 /** Teams from a game's court setup, to keep assists within a team (unknown players count as teammates). */
@@ -80,7 +80,7 @@ const ERROR: Partial<Record<Skill, StatKey>> = { serve: 'serr', receive: 'rerr',
 export function computeStats(games: Game[]): Record<string, PlayerStats> {
   const out: Record<string, PlayerStats> = {};
   const add = (pid: string | undefined, k: StatKey | undefined, c: Clip) => {
-    if (!pid || pid === 'guest' || !k) return;
+    if (!pid || isGuest(pid) || !k) return;
     (out[pid] ??= empty())[k].push(c);
   };
   for (const g of games) {

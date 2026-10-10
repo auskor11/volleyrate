@@ -12,7 +12,7 @@
 // - Recent sessions count more: a session's weight halves every 8 sessions (all games on one date equal).
 // - Only rallies tagged touch-by-touch (with a result) count; quick point tags lack attempt counts.
 // - No caps beyond the 0–99 scale.
-import { DEFAULT_SET_GRADE, forcedBy, gameWeight, isApplied, type Game, type Skill } from './games';
+import { DEFAULT_SET_GRADE, forcedBy, gameWeight, isApplied, isGuest, type Game, type Skill } from './games';
 import type { Player } from './data';
 import type { Ratings } from './ratings';
 
@@ -108,7 +108,7 @@ function gameCounts(g: Game): Record<string, Counts> {
       if (f >= 0) credit(f);
     }
   }
-  delete out.guest;
+  for (const p of Object.keys(out)) if (isGuest(p)) delete out[p];
   return out;
 }
 

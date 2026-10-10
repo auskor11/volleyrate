@@ -21,7 +21,7 @@
 // front row; if he does play front court, the rotation carries on as usual and he's shown as L/MB.
 // Other subs are made by the reviewer. A rally only stores a court when the reviewer changes it by hand;
 // every other rally's court is worked out from the setup and those changes, so fixes carry forward.
-import type { Rally, Skill, Touch } from './games';
+import { guestTeam, isGuest, type Rally, type Skill, type Touch } from './games';
 import type { Position } from './ratings';
 
 export type Team = 'a' | 'b';
@@ -80,7 +80,10 @@ export const setupReady = (c?: CourtSetup | null): c is CourtSetup =>
 export const server = (c: CourtState) => c[c.serving].pos[0];
 
 export function teamOf(c: CourtState, p: string): Team | null {
-  if (p === 'guest' || !p) return null;
+  if (!p) return null;
+  const g = guestTeam(p);
+  if (g) return g;               // 'guest-a' / 'guest-b' say their team
+  if (isGuest(p)) return null;
   return TEAMS.find(t => c[t].pos.includes(p) || c[t].bench.includes(p)) ?? null;
 }
 
@@ -208,7 +211,7 @@ function advance(c: CourtState, r: Rally): { next: CourtState; winner: Team | nu
   let cur = c;
   // a tagged serve by someone else (games tagged before courts existed): line the rotation up with it
   const sv = r.touches?.[0];
-  if (sv?.k === 'serve' && sv.p !== 'guest' && sv.p !== server(c)) cur = makeServer(c, sv.p);
+  if (sv?.k === 'serve' && !isGuest(sv.p) && sv.p !== server(c)) cur = makeServer(c, sv.p);
   const winner = rallyWinner(cur, r);
   if (!winner || winner === cur.serving) return { next: cur, winner };
   // side-out: the winners rotate and serve; the team that lost its serve gets its libero back

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth';
 import { usePlayers, type Player } from '../lib/data';
 import {
-  ATTACK_TYPES, DEFAULT_SET_GRADE, GRADED, GRADE_LABELS, SKILLS, deleteGame, fmtTime, isTagged, nextSkill, rallyResult, saveRallies, suggestTouches,
+  ATTACK_TYPES, DEFAULT_SET_GRADE, GRADED, GRADE_LABELS, SKILLS, guestName, isGuest, deleteGame, fmtTime, isTagged, nextSkill, rallyResult, saveRallies, suggestTouches,
   updateGame, useGame, type AttackType, type Game, type SameTeam, type Grade, type Rally, type RallyEnd, type Skill, type Touch,
 } from '../lib/games';
 import { createPlayer, type YTPlayer } from '../lib/youtube';
@@ -139,7 +139,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
     setSel(null);
   };
   // a player can't touch the ball twice in a row: probably a tagging slip
-  const doubled = touches.findIndex((x, i) => i > 0 && x.p !== 'guest' && x.p === touches[i - 1].p);
+  const doubled = touches.findIndex((x, i) => i > 0 && !isGuest(x.p) && x.p === touches[i - 1].p);
   const finish = (i: number, r: RallyEnd['r']) => { onChange(touches, { i, r }); onDone(); };
 
   // optional detail for the selected touch (or the latest one): a grade, or the attack type
@@ -171,7 +171,8 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
       const last = c.touches.length - 1;
       const act =
         pi >= 0 && c.sorted[pi] ? () => c.addTouch(c.sorted[pi].id)
-        : key === 'g' ? () => c.addTouch('guest')
+        : key === 'g' ? () => c.addTouch('guest-a')
+        : key === 'h' ? () => c.addTouch('guest-b')
         : SKILL_KEYS_KB[key] ? () => c.pickSkill(SKILL_KEYS_KB[key])
         : DETAIL_KEYS.includes(key) && c.detailOpts.length ? c.detailOpts[DETAIL_KEYS.indexOf(key)].set
         : key === ' ' ? c.togglePlay
@@ -290,8 +291,10 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
                 <span className="shrink-0 text-xs text-muted">{pl.number !== null ? `#${pl.number}` : ''}{PLAYER_KEYS[i] && <Kbd k={PLAYER_KEYS[i]} />}</span>
               </button>
             ))}
-            <button onClick={() => addTouch('guest')}
-              className="rounded-lg border border-line bg-raised px-2 py-2 text-sm text-muted active:scale-[0.97]">Guest<Kbd k="G" /></button>
+            {(['a', 'b'] as const).map(t => (
+              <button key={t} onClick={() => addTouch(`guest-${t}`)}
+                className="rounded-lg border border-line bg-raised px-2 py-2 text-sm text-muted active:scale-[0.97]">Guest {t.toUpperCase()}<Kbd k={t === 'a' ? 'G' : 'H'} /></button>
+            ))}
           </div>
           {enders.length > 0 && (
             <div className="grid grid-cols-2 gap-1.5">
@@ -398,15 +401,26 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   // set when a linked rally couldn't start on its own (phones block playing with sound until a tap)
   const [tapToPlay, setTapToPlay] = useState<{ i: number; t: number } | null>(null);
   const playLinked = useCallback((i: number, t: number) => {
-    go(i);
-    if (t - list[i].s > 3) player.current?.seekTo(t - 3, true);  // jump close to the touch
+    const r = list[i];
+    if (t <= r.e + 0.5) {
+      go(i);
+      if (t - r.s > 3) player.current?.seekTo(t - 3, true);  // jump close to the touch
+    } else {
+      // the touch was tagged after the clip ends: play on from the rally start through to it
+      setCur(i);
+      seekFree(Math.max(r.s, t - 8));
+    }
   }, [go, list]);
   useEffect(() => {
     // wait for both the player and the game's rallies
     if (!ready || startAt.current === null || !list.length) return;
     const t = Number(startAt.current);
     startAt.current = null;
-    const i = list.findIndex(r => t >= r.s - 0.2 && t <= r.e + 0.5);
+    // the rally the link came from (by its start), else the rally around the time, else the one before it
+    const rs = search.get('r');
+    let i = rs !== null ? list.findIndex(r => Math.abs(r.s - Number(rs)) < 0.6) : -1;
+    if (i < 0) i = list.findIndex(r => t >= r.s - 0.2 && t <= r.e + 0.5);
+    if (i < 0) i = list.reduce((best, r, k) => (r.s <= t ? k : best), -1);
     if (i < 0) return;
     playLinked(i, t);
     setTimeout(() => { if (player.current?.getPlayerState() !== 1) setTapToPlay({ i, t }); }, 1500);
@@ -508,7 +522,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
       return { ...rest, touches, ...(end && end.i < touches.length ? { end } : {}) };
     });
     const res = rallyResult(updated.find(r => r.s === r0.s)!, sameTeamIn(game));
-    const who = (pid: string) => pid === 'guest' ? 'Guest' : players?.find(p => p.id === pid)?.name ?? pid;
+    const who = (pid: string) => isGuest(pid) ? guestName(pid) : players?.find(p => p.id === pid)?.name ?? pid;
     const chain = touches.map(t => `${who(t.p)} ${SKILLS[t.k].toLowerCase()}`).join(' → ');
     commit(updated, r0.s, [`tag:${r0.as ?? r0.s}`, !touches.length ? `${label(r0)}: cleared tags`
       : `${label(r0)}: ${chain}${res ? ` ⇒ ${res.label} · ${who(res.who)}` : ' (in progress)'}`]);
@@ -563,7 +577,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
 
   const unchecked = rallies.filter(r => r.st === 'auto').length;
   const untagged = rallies.filter(r => r.st !== 'bad' && !isTagged(r)).length;
-  const name = (id?: string) => !id ? '' : id === 'guest' ? 'Guest' : players?.find(p => p.id === id)?.name ?? '?';
+  const name = (id?: string) => !id ? '' : isGuest(id) ? guestName(id) : players?.find(p => p.id === id)?.name ?? '?';
   const live = rallies.filter(r => r.st !== 'bad').length;
 
   const remove = async () => {
@@ -687,7 +701,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
           </div>
         ) : mode === 'tag' ? (
           <>
-            <p className="hidden text-xs text-muted lg:block">Tag while it plays: tap names (or press 1–9, 0, G) as each touch happens. Space = play/pause.</p>
+            <p className="hidden text-xs text-muted lg:block">Tag while it plays: tap names (or press 1–9, 0, G / H for guests) as each touch happens. Space = play/pause.</p>
             {rallyList(listEl2, 'hidden min-h-[8.125rem] flex-1 lg:block', true)}
           </>
         ) : (
@@ -731,9 +745,9 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
             sug={step && atSug !== null && atSug === pending ? { t: pending, i: pendingIdx, n: sugs.length } : null}
             onSkip={skipSug}
             serve={view && rally && !rally.touches?.length ? {
-              p: server(view.state), t: sugs[0] ?? rally.s,
+              p: isGuest(server(view.state)) ? `guest-${view.state.serving}` : server(view.state), t: sugs[0] ?? rally.s,
               why: view.saved ? 'as set on the court' : view.first ? 'first rally' : view.lastWinner ? `Team ${view.lastWinner.toUpperCase()} won the last rally` : "couldn't tell who won the last rally: check the court",
-              choices: TEAMS.flatMap(t => view.state[t].pos).filter(p => p !== 'guest'),
+              choices: TEAMS.flatMap(t => view.state[t].pos).filter(p => !isGuest(p)),
             } : null}
             onServer={p => view && setCourt(makeServer(view.state, p), `server changed to ${name(p)}`)}
             wonBy={view && rally ? rallyWinner(view.state, rally) : null}
