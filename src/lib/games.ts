@@ -106,8 +106,8 @@ export type SameTeam = (a: string, b: string) => boolean;
 export function assistIndex(ts: Touch[], i: number, sameTeam?: SameTeam): number {
   const x = ts[i], before = ts[i - 1];
   if (x?.k !== 'attack' || !before || before.p === x.p) return -1;
-  if (before.k === 'set') return i - 1;
-  if (before.k === 'dig' && (sameTeam?.(before.p, x.p) ?? true)) return i - 1;
+  // only a teammate's ball counts: a set or dig that went over to the other team isn't an assist
+  if ((before.k === 'set' || before.k === 'dig') && (sameTeam?.(before.p, x.p) ?? true)) return i - 1;
   return -1;
 }
 
