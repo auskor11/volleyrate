@@ -1413,7 +1413,7 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
   const games = useGames();
   const blank: CourtSetup = { a: emptySide(), b: emptySide(), serving: 'a' };
   const initial = (): CourtSetup => (fromRally ? courtOnly(fromRally.state) : gameSetup(game) ?? blank);
-  const [c, setC] = useState<CourtSetup>(initial);
+  const [c, setC] = useState<CourtSetup>(() => tidy(initial()));
   const [target, setTarget] = useState<string>(() => nextSpot(initial(), 'a'));
   const [busy, setBusy] = useState(false);
   const name = (id: string) => id === 'guest' ? 'Guest' : players.find(p => p.id === id)?.name ?? id;
@@ -1445,7 +1445,7 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
     setC(tidy({ ...c, [tTeam]: { ...c[tTeam], pos: c[tTeam].pos.map((p, i) => i === tSpot ? '' : p) } }));
   };
   // the extra middle must be on the bench; nobody starts subbed in for the libero
-  const tidy = (x: CourtSetup): CourtSetup => {
+  function tidy(x: CourtSetup): CourtSetup {
     const fix = (sd: CourtSetup['a']) => {
       const { mb: mb0, lib, mid: _m, l6, l6front, ...rest } = sd;
       // the libero starts on the bench: the middle standing in the libero's spot is the one they swap with
@@ -1454,7 +1454,9 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
         const o = sd.pos[sd.roles.indexOf('L')];
         mb = o && o !== lib ? o : undefined;
       }
-      if (mb && (sd.bench.includes(mb) || sd.pos.includes(mb))) {
+      // a libero needs a 7th player (the libero plus both middles): six players means no libero
+      const seven = sd.pos.filter(Boolean).length + sd.bench.length >= 7;
+      if (mb && seven && (sd.bench.includes(mb) || sd.pos.includes(mb))) {
         // an extra middle (on the bench, or on court when editing mid-set): the team plays with a libero
         // (chosen, or whoever stands in the back-row middle spot)
         const l = lib && lib !== mb && (sd.pos.includes(lib) || sd.bench.includes(lib)) ? lib : likelyLibero({ ...sd, mb }) ?? '';
@@ -1467,7 +1469,7 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
       return { ...rest, l6: pick, ...(pick && l6front ? { l6front: true } : {}) };
     };
     return { ...x, a: fix(x.a), b: fix(x.b) };
-  };
+  }
   const setMb = (t: Team, id: string | null) => setC(x => tidy({ ...x, [t]: { ...x[t], mb: id ?? undefined, ...(id && x[t].lib === id ? { lib: undefined } : {}) } }));
   // a sub who is the libero (starting on the bench while a middle plays in their place)
   const setLib = (t: Team, id: string | null) => setC(x => tidy({ ...x, [t]: { ...x[t], lib: id ?? undefined, mb: id ? undefined : x[t].mb } }));
