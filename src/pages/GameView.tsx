@@ -19,7 +19,7 @@ import { logHistory, setGameRating, useGames, useHistory } from '../lib/games';
 import { addHighlight, useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
 import {
-  BACK_COURT_PLAYERS, ROLE_NAMES, START_ROLES, TEAMS, courtFor, guestServes, likelyLibero, sameCourt, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
+  BACK_COURT_PLAYERS, ROLE_NAMES, START_ROLES, TEAMS, assignMiddles, courtFor, guestServes, likelyLibero, sameCourt, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
   scoreSheet, server, setupReady, startCourt,
   type CourtSetup, type CourtState, type CourtView, type Team,
 } from '../lib/rotation';
@@ -429,6 +429,8 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   const [highlighting, setHighlighting] = useState(false);
   const [teamsOpen, setTeamsOpen] = useState(false);
   const openTeams = () => { player.current?.pauseVideo(); setTeamsOpen(true); };  // the setup has its own video
+  const [teamsFrom, setTeamsFrom] = useState(false);  // re-entering the teams at the selected rally
+  const openTeamsFrom = () => { player.current?.pauseVideo(); setTeamsFrom(true); };
   const gameHighlights = useHighlights({ gameId: game.id });
   const starred = (r: Rally) => (gameHighlights ?? []).filter(h => Math.abs(h.s - r.s) < 1);
   const [step, setStep] = useState(false);  // pause at suggested touch moments while tagging (off until suggestions improve)
@@ -768,6 +770,9 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
         {showHistory && <HistoryDialog gameId={game.id} onClose={() => setShowHistory(false)} />}
         {teamsOpen && <TeamsDialog game={game} players={players ?? []} onClose={() => setTeamsOpen(false)}
           video={{ youtubeId: cam.youtubeId, offset: cam.offset, start: liveRallies[0]?.s ?? 0, name: cameraLabel(cam) }} />}
+        {teamsFrom && view && rally && <TeamsDialog game={game} players={players ?? []} onClose={() => setTeamsFrom(false)}
+          video={{ youtubeId: cam.youtubeId, offset: cam.offset, start: rally.s, name: cameraLabel(cam) }}
+          fromRally={{ label: `rally ${liveRallies.indexOf(rally) + 1}`, state: view.state, onSave: c => setCourt(c, 're-entered the teams from this rally') }} />}
         {highlighting && rally && (
           <HighlightDialog game={game} rally={rally} players={players ?? []} onClose={() => setHighlighting(false)} />
         )}
@@ -950,7 +955,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
               Rotation{view ? <>{rally && scoreAt.get(rally) && <> · <b className="text-ink">A {scoreAt.get(rally)!.before.a}–{scoreAt.get(rally)!.before.b} B</b></>}: 🏐 <b className="text-ink">{name(server(view.state))}</b> serves for Team {view.state.serving.toUpperCase()}</> : teamsReady ? '' : ': teams not set up yet'}
             </summary>
             <div className="mx-auto mt-2 max-w-[17rem]">
-              <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={openTeams}
+              <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={openTeams} onEditRally={openTeamsFrom}
               score={rally ? scoreAt.get(rally)?.before : undefined} missed={rally ? notCounted(liveRallies.indexOf(rally)) : 0} />
             </div>
           </details>
@@ -985,7 +990,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
       {showCourt && (
         <div className="hidden min-h-0 overflow-y-auto lg:block">
           <div className="rounded-xl border border-line bg-surface p-2">
-            <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={openTeams}
+            <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={openTeams} onEditRally={openTeamsFrom}
               score={rally ? scoreAt.get(rally)?.before : undefined} missed={rally ? notCounted(liveRallies.indexOf(rally)) : 0} />
           </div>
         </div>
@@ -995,10 +1000,10 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
 }
 
 /** The live court for the rally being tagged: checked by the reviewer, fixed by dragging or rotating. */
-function RotationPanel({ view, setup, name, tagged, notRally, onChange, onSetup, score, missed }: {
+function RotationPanel({ view, setup, name, tagged, notRally, onChange, onSetup, onEditRally, score, missed }: {
   view: CourtView | null; setup: CourtSetup | null; name: (id?: string) => string; tagged: boolean; notRally?: boolean;
   score?: { a: number; b: number }; missed: number;  // score before this rally; earlier rallies left out of it
-  onChange: (c: CourtState, what: string, manual?: boolean) => void; onSetup: () => void;
+  onChange: (c: CourtState, what: string, manual?: boolean) => void; onSetup: () => void; onEditRally: () => void;
 }) {
   if (!setupReady(setup)) return (
     <div className="space-y-2 p-1 text-sm">
@@ -1039,7 +1044,10 @@ function RotationPanel({ view, setup, name, tagged, notRally, onChange, onSetup,
       <p className="px-0.5 text-[11px] text-muted">
         Drag a sub onto a player (or tap one, then the other) to swap them. Changes apply from this rally on.
       </p>
-      <button onClick={onSetup} className="px-0.5 text-xs text-ball">Edit starting teams</button>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 px-0.5 text-xs">
+        {view && <button onClick={onEditRally} className="text-ball" title="Rotation or roles changed mid-set: re-enter the teams as they stand now">Edit teams from this rally</button>}
+        <button onClick={onSetup} className="text-muted">Edit starting teams</button>
+      </div>
     </div>
   );
 }
@@ -1395,15 +1403,18 @@ function SetupVideo({ youtubeId, offset, start, name }: { youtubeId: string; off
   );
 }
 
-function TeamsDialog({ game, players, onClose, video }: {
+function TeamsDialog({ game, players, onClose, video, fromRally }: {
   game: Game; players: Player[]; onClose: () => void;
   video: { youtubeId: string; offset: number; start: number; name: string };
+  // re-enter the teams at a rally mid-set: starts from that rally's court, saves only from that rally on
+  fromRally?: { label: string; state: CourtState; onSave: (c: CourtState) => void };
 }) {
   const user = useAuth()?.user ?? null;
   const games = useGames();
   const blank: CourtSetup = { a: emptySide(), b: emptySide(), serving: 'a' };
-  const [c, setC] = useState<CourtSetup>(() => gameSetup(game) ?? blank);
-  const [target, setTarget] = useState<string>(() => nextSpot(gameSetup(game) ?? blank, 'a'));
+  const initial = (): CourtSetup => (fromRally ? courtOnly(fromRally.state) : gameSetup(game) ?? blank);
+  const [c, setC] = useState<CourtSetup>(initial);
+  const [target, setTarget] = useState<string>(() => nextSpot(initial(), 'a'));
   const [busy, setBusy] = useState(false);
   const name = (id: string) => id === 'guest' ? 'Guest' : players.find(p => p.id === id)?.name ?? id;
   const used = new Set(TEAMS.flatMap(t => [...c[t].pos, ...c[t].bench]).filter(p => p && p !== 'guest'));
@@ -1457,6 +1468,12 @@ function TeamsDialog({ game, players, onClose, video }: {
   const ok = setupReady(c);
 
   const save = async () => {
+    if (fromRally) {  // a lineup change at this rally: saved on the rally, the starting teams stay as they are
+      const { score: _s, ...lineup } = c;
+      fromRally.onSave(assignMiddles(lineup));
+      onClose();
+      return;
+    }
     setBusy(true);
     await updateGame(game.id, { court: c });
     const desc = (t: Team) => c[t].pos.map((p, i) => `${i + 1} ${name(p)}`).join(', ') + (c[t].bench.length ? `; subs ${c[t].bench.map(name).join(', ')}` : '');
@@ -1480,10 +1497,14 @@ function TeamsDialog({ game, players, onClose, video }: {
         <div className="min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <h2 className="font-semibold">Starting teams</h2>
-            <p className="mt-0.5 text-sm text-muted">Who stands where at the first rally. Positions go 1 → 6 anticlockwise from back right; 1 serves.</p>
+            <h2 className="font-semibold">{fromRally ? `Teams from ${fromRally.label}` : 'Starting teams'}</h2>
+            <p className="mt-0.5 text-sm text-muted">
+              {fromRally
+                ? 'Who stands where at this rally, after a change of rotation or roles. It applies from this rally on, and later rallies follow it; the starting teams stay as they are.'
+                : 'Who stands where at the first rally.'} Positions go 1 → 6 anticlockwise from back right; 1 serves.
+            </p>
           </div>
-          {prev && <button className="shrink-0 rounded-md border border-line px-2 py-1 text-xs" onClick={() => { const { score: _s, ...rest } = gameSetup(prev)!; const x = tidy(rest); setC(x); setTarget(nextSpot(x, 'a')); }}>Copy from {prev.title}</button>}
+          {!fromRally && prev && <button className="shrink-0 rounded-md border border-line px-2 py-1 text-xs" onClick={() => { const { score: _s, ...rest } = gameSetup(prev)!; const x = tidy(rest); setC(x); setTarget(nextSpot(x, 'a')); }}>Copy from {prev.title}</button>}
         </div>
         <div className="mt-3">
           <div className="min-w-0 space-y-3">
@@ -1503,13 +1524,13 @@ function TeamsDialog({ game, players, onClose, video }: {
               {TEAMS.map(t => <button key={t} onClick={() => setTarget(`${t}.bench.end`)} className="rounded-md border border-line px-2 py-1">+ Team {t.toUpperCase()} sub</button>)}
             </div>
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted">First serve</span>
+              <span className="text-muted">{fromRally ? 'Serving at this rally' : 'First serve'}</span>
               {TEAMS.map(t => (
                 <button key={t} onClick={() => setC({ ...c, serving: t })}
                   className={`rounded-md border px-3 py-1 ${c.serving === t ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>Team {t.toUpperCase()}</button>
               ))}
             </div>
-            <div className="flex items-center gap-2 text-sm">
+            {!fromRally && <div className="flex items-center gap-2 text-sm">
               <span className="text-muted">Score at this clip's first rally</span>
               {TEAMS.map(t => (
                 <label key={t} className="flex items-center gap-1">
@@ -1519,7 +1540,7 @@ function TeamsDialog({ game, players, onClose, video }: {
                     className="w-14 rounded-md border border-line bg-raised px-2 py-1 text-ink outline-none focus:border-ball" />
                 </label>
               ))}
-            </div>
+            </div>}
             <div className="space-y-1.5 rounded-lg border border-line p-2">
               <p className="text-xs text-muted">
                 Roles at positions 1 and 2. Start of a set is OH1 at 1 and S at 2; if the clip starts mid-set, pick what's
@@ -1628,10 +1649,10 @@ function TeamsDialog({ game, players, onClose, video }: {
             Fill all six positions for both teams (use Guest for guests).
           </p>
         )}
-        <p className="mt-3 text-[11px] text-muted">Changes here apply to every rally; subs and swaps you made by hand while tagging are kept from their rally on.</p>
+        <p className="mt-3 text-[11px] text-muted">{fromRally ? 'Saving replaces this rally\'s court; the court panel\'s "Undo changes" goes back to the rotation.' : 'Changes here apply to every rally; subs and swaps you made by hand while tagging are kept from their rally on.'}</p>
         <div className="mt-2 flex gap-2">
           <button onClick={save} disabled={busy || !ok} className="flex-1 rounded-lg bg-ball py-2.5 font-semibold text-bg disabled:opacity-40">
-            {busy ? 'Saving…' : 'Save teams'}
+            {busy ? 'Saving…' : fromRally ? 'Save from this rally on' : 'Save teams'}
           </button>
           <button onClick={onClose} className="rounded-lg border border-line px-4 py-2.5">Cancel</button>
         </div>

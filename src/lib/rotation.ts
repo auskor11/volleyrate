@@ -212,6 +212,9 @@ export const placeSpecialists = (c: CourtState): CourtState => ({
   b: liberoRule(backCourtSwap(c.b), c.serving === 'b'),
 });
 
+/** After the teams are re-entered at some rally: work out the middles and libero again from that lineup. */
+export const assignMiddles = (c: CourtState): CourtState => ({ ...c, a: withMiddles(c.a), b: withMiddles(c.b) });
+
 /** The court at the first rally: middles and libero placed for who serves first. */
 export const startCourt = (c: CourtSetup): CourtState => {
   const n = courtOnly(c);
