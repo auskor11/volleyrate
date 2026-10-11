@@ -42,6 +42,11 @@ export async function saveRatings(playerId: string, ratings: Ratings) {
   await updateDoc(doc(db, 'players', playerId), { ratings, ratingsUpdatedAt: serverTimestamp() });
 }
 
+/** A player's own positions (primary first): the only profile field players can change themselves. */
+export async function savePositions(playerId: string, positions: Position[]) {
+  await updateDoc(doc(db, 'players', playerId), { positions });
+}
+
 export async function savePlayer(p: Omit<Player, 'ratings'>) {
   const { id, ...rest } = p;
   await setDoc(doc(db, 'players', id), rest, { merge: true });

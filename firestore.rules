@@ -32,9 +32,17 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Players can change the positions on their own profile (primary first), nothing else.
     match /players/{playerId} {
       allow read: if isMember();
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        signedIn() && exists(memberPath()) && get(memberPath()).data.get('playerId', '') == playerId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['positions'])
+        && request.resource.data.positions is list
+        && request.resource.data.positions.size() >= 1 && request.resource.data.positions.size() <= 5
+        && request.resource.data.positions.hasOnly(['S', 'OH', 'OPP', 'MB', 'L'])
+      );
     }
 
     // Highlights: whole rallies bookmarked to a player's profile. Anyone on the team can add one

@@ -7,6 +7,7 @@ import { AttrBar, PlayerCard } from '../components/PlayerCard';
 import { useRatedPlayers } from '../lib/rated';
 import { BLOCK_CREDIT, METRICS, experience, metricsFor, type RatingModel } from '../lib/engine';
 import { fmtTime, useGames } from '../lib/games';
+import { savePositions } from '../lib/data';
 import { STAT_GROUPS, STAT_LABELS, avgGrade, computeStats, ratio, taggedGames, type StatKey } from '../lib/stats';
 import { CATEGORIES, POSITIONS, categoryScore, categoryWeights, overall, type Position } from '../lib/ratings';
 
@@ -73,6 +74,7 @@ export function PlayerDetail() {
             );
           })}
         </div>
+        <PositionsEditor player={p} />
         {pos !== main && (
           <p className="mt-2 text-xs text-muted">
             What if {p.name.split(' ')[0]} played {POSITIONS[pos].toLowerCase()}: the same attribute ratings, weighted for that
@@ -108,6 +110,49 @@ export function PlayerDetail() {
       </section>
 
       <PlayerStatsSection playerId={p.id} />
+    </div>
+  );
+}
+
+/** The player (or an admin) sets the positions saved on the profile, primary first. */
+function PositionsEditor({ player }: { player: { id: string; name: string; positions: Position[] } }) {
+  const auth = useAuth();
+  const [draft, setDraft] = useState<Position[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const mine = auth?.member?.playerId === player.id;
+  if (!mine && !auth?.isAdmin) return null;
+  if (!draft) return (
+    <p className="mt-2 flex items-center gap-2 text-xs text-muted">
+      {mine ? 'Your' : 'Saved'} positions: <b className="text-ink">{player.positions.join(' / ') || 'none'}</b>
+      <button className="rounded-md border border-line px-2 py-0.5 text-ink" onClick={() => { setDraft([...player.positions]); setError(''); }}>Edit</button>
+    </p>
+  );
+  const save = async () => {
+    setBusy(true); setError('');
+    try { await savePositions(player.id, draft); setDraft(null); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="mt-2 space-y-2 rounded-lg bg-raised/50 p-2 text-xs">
+      <p className="text-muted">Tap positions in order, main position first. This changes {mine ? 'your' : `${player.name.split(' ')[0]}'s`} profile: the overall on the card and in the Players list uses the main one.</p>
+      <div className="flex flex-wrap gap-1.5">
+        {(Object.keys(POSITIONS) as Position[]).map(k => {
+          const i = draft.indexOf(k);
+          return (
+            <button key={k} onClick={() => setDraft(i >= 0 ? draft.filter(x => x !== k) : [...draft, k])}
+              className={`rounded-md border px-2.5 py-1 ${i >= 0 ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>
+              {i >= 0 && <span className="mr-1 font-bold">{i + 1}</span>}{POSITIONS[k]}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex gap-2">
+        <button disabled={busy || !draft.length} onClick={save} className="rounded-md bg-ball px-3 py-1.5 font-semibold text-bg disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
+        <button disabled={busy} onClick={() => setDraft(null)} className="rounded-md border border-line px-3 py-1.5">Cancel</button>
+      </div>
+      {error && <p className="text-bad">{error}</p>}
     </div>
   );
 }
