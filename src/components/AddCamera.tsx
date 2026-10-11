@@ -3,6 +3,7 @@
 // rally detector (its clips become training data once the game is reviewed).
 import { useEffect, useRef, useState } from 'react';
 import { CameraFields, defaultCamera, type CameraChoice } from './CameraFields';
+import { NetLine, lastNetLine, netParams } from './NetLine';
 import { autoSync, type Angle } from '../lib/cameras';
 import { detectorSupported, runDetector, type DetectorProgress } from '../lib/detector';
 import { fmtTime, logHistory, updateGame, type Game } from '../lib/games';
@@ -19,15 +20,17 @@ export function AddCamera({ game, onClose }: { game: Game; onClose: () => void }
   const [file, setFile] = useState<File | null>(null);
   const [mainFile, setMainFile] = useState<File | null>(null);   // only if the game has no contact sounds saved
   const [detect, setDetect] = useState(true);                      // run this camera's rally detector too
+  const [net, setNet] = useState(lastNetLine);                     // back camera: the top of the net in the picture
+  const needsNet = camera.kind === 'back' && detect;
   const [step, setStep] = useState<Step | null>(null);
   const [error, setError] = useState('');
   const cancel = useRef<() => void>(undefined);
   useEffect(() => () => cancel.current?.(), []);
   const needMain = !game.peaks?.length;
 
-  async function read(f: File, what: string, audioOnly: boolean) {
+  async function read(f: File, what: string, audioOnly: boolean, extra: Record<string, number> = {}) {
     setStep({ what, p: null });
-    const run = runDetector(f, p => setStep({ what, p }), undefined, audioOnly, camera.kind);
+    const run = runDetector(f, p => setStep({ what, p }), undefined, audioOnly, camera.kind, extra);
     cancel.current = run.cancel;
     return run.result;
   }
@@ -47,7 +50,8 @@ export function AddCamera({ game, onClose }: { game: Game; onClose: () => void }
       let mainPeaks: number[] = [];
       if (file) {
         mainPeaks = needMain && mainFile ? (await read(mainFile, "Reading the main video's sound", true)).peaks : game.peaks ?? [];
-        const r = await read(file, detect ? "Finding rallies in this camera's video" : "Reading this camera's sound", !detect);
+        const r = await read(file, detect ? "Finding rallies in this camera's video" : "Reading this camera's sound", !detect, needsNet ? netParams(net) : {});
+        if (needsNet) angle.net = Math.round(net * 1000) / 1000;
         angle.peaks = r.peaks;
         if (detect) angle.segments = r.segments;
         const s = mainPeaks.length ? autoSync(mainPeaks, r.peaks) : null;
@@ -101,6 +105,7 @@ export function AddCamera({ game, onClose }: { game: Game; onClose: () => void }
                 {pick('Choose the main video file', mainFile, setMainFile)}
               </>
             )}
+            {file && needsNet && !step && <NetLine file={file} value={net} onChange={setNet} />}
             {file && (
               <label className="flex items-center gap-2 text-xs text-muted">
                 <input type="checkbox" checked={detect} onChange={e => setDetect(e.target.checked)} className="accent-[#f5c518]" />

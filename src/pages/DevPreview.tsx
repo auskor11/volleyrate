@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { NetLine, netParams } from '../components/NetLine';
 // Development-only: renders cards and a detail view with sample data (no sign-in needed).
 import { MemoryRouter } from 'react-router-dom';
 import { GamePlayer } from './GameView';
@@ -78,4 +80,12 @@ export function DevHighlights() {
   return <MemoryRouter><div className="mx-auto max-w-3xl p-4">
     <Highlights playerId="jo" name="Jo" sample={[h('a', 40, 44, 'first'), h('b', 100, 104, 'second'), h('c', 200, 204, 'third')]} />
   </div></MemoryRouter>;
+}
+
+// Net-line marking step on a short sample clip (dev only; the sample file is not committed).
+export function DevNetLine() {
+  const [file, setFile] = useState<File | null>(null);
+  const [v, setV] = useState(0.55);
+  useEffect(() => { fetch('/__netline_sample.mp4').then(r => r.blob()).then(b => setFile(new File([b], 'sample.mp4', { type: 'video/mp4' }))); }, []);
+  return <div className="mx-auto max-w-lg p-4">{file && <NetLine file={file} value={v} onChange={setV} />}<p className="mt-2 text-sm">value {v.toFixed(3)} → y_max {netParams(v).y_max}</p></div>;
 }

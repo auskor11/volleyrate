@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { DETECTOR_VERSION, detectorSupported, runDetector, type DetectorProgress, type DetectorResult } from '../lib/detector';
 import { CameraFields, defaultCamera, type CameraChoice } from '../components/CameraFields';
+import { NetLine, lastNetLine, netParams } from '../components/NetLine';
 import { createGame, fmtTime, liveRallies, logHistory, useGames, type Game } from '../lib/games';
 import { createPlayer, parseYouTubeId, thumbnail, type YTPlayer } from '../lib/youtube';
 
@@ -115,6 +116,8 @@ export function AddGame() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
   const [camera, setCamera] = useState<CameraChoice>(defaultCamera());
+  const [net, setNet] = useState(lastNetLine);        // back camera: the top of the net in the picture
+  const [waitingNet, setWaitingNet] = useState(false); // back camera: file picked, line not confirmed yet
   const cancelRef = useRef<() => void>(undefined);
 
   // YouTube preview + duration
@@ -136,14 +139,17 @@ export function AddGame() {
 
   useEffect(() => () => cancelRef.current?.(), []);
 
-  async function onFile(f: File, kind = camera.kind) {
+  async function onFile(f: File, kind = camera.kind, confirmed = false) {
     cancelRef.current?.();
     setFile(f); setResult(null); setError(''); setProgress(null); setFileDuration(null);
     if (!title) setTitle(f.name.replace(/\.[^.]+$/, ''));
     setDate(new Date(f.lastModified).toISOString().slice(0, 10));
+    // a back camera needs the net marked first: where it sits depends on how the camera was set up
+    if (kind === 'back' && !confirmed) { setWaitingNet(true); return; }
+    setWaitingNet(false);
     let lock: WakeLockSentinel | null = null;
     try { lock = await navigator.wakeLock.request('screen'); } catch { /* not supported */ }
-    const run = runDetector(f, setProgress, i => { if (i.duration) setFileDuration(i.duration); }, false, kind);
+    const run = runDetector(f, setProgress, i => { if (i.duration) setFileDuration(i.duration); }, false, kind, kind === 'back' ? netParams(net) : {});
     cancelRef.current = run.cancel;
     try {
       setResult(await run.result);
@@ -176,6 +182,7 @@ export function AddGame() {
         ...(camera.kind !== 'side' ? { camera: camera.kind } : {}),
         ...(camera.name.trim() && camera.name.trim() !== 'Side' ? { cameraName: camera.name.trim() } : {}),
         ...(camera.kind === 'back' && camera.behind ? { behind: camera.behind } : {}),
+        ...(camera.kind === 'back' ? { net: Math.round(net * 1000) / 1000 } : {}),
       });
       logHistory(id, user, [`Added the game · ${result!.rallies.length} rallies detected`]).catch(() => {});
       nav(`/games/${id}?review=1`);
@@ -219,7 +226,13 @@ export function AddGame() {
               onChange={e => e.target.files?.[0] && onFile(e.target.files[0])} />
           </label>
         )}
-        {file && !result && !error && (
+        {file && waitingNet && (
+          <div className="mt-3 space-y-2">
+            <NetLine file={file} value={net} onChange={setNet} />
+            <button className="w-full rounded-lg bg-ball py-2.5 font-semibold text-bg" onClick={() => onFile(file, 'back', true)}>Find the rallies</button>
+          </div>
+        )}
+        {file && !waitingNet && !result && !error && (
           <div className="mt-3">
             <div className="h-2.5 overflow-hidden rounded-full bg-raised">
               <div className="h-full bg-ball transition-all" style={{ width: `${frac * 100}%` }} />

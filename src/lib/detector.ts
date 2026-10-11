@@ -21,6 +21,7 @@ export function runDetector(
   onInfo?: (info: { duration?: number; codec?: string }) => void,
   audioOnly = false,
   kind: CameraKind = 'side',
+  extra: Record<string, number> = {},  // per-video settings, e.g. the back camera's net line
 ): { result: Promise<DetectorResult>; cancel: () => void } {
   const worker = new Worker('/detector/worker.js');
   let adtsQueue = Promise.resolve();
@@ -36,7 +37,7 @@ export function runDetector(
         else if (m.type === 'error') reject(new Error(m.message));
         else if (m.type === 'done') resolve(m);
       };
-      worker.postMessage({ source: file, model, opts: { noCandidates: true, audioOnly, params: CAMERA_KINDS[kind].params } });
+      worker.postMessage({ source: file, model, opts: { noCandidates: true, audioOnly, params: { ...CAMERA_KINDS[kind].params, ...extra } } });
     });
   })().finally(() => worker.terminate());
   return { result, cancel: () => worker.terminate() };

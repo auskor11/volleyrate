@@ -6,6 +6,7 @@ import { CAMERA_KINDS, type Angle } from '../lib/cameras';
 import { detectorSupported, runDetector, type DetectorProgress } from '../lib/detector';
 import { fmtTime, logHistory, updateGame, type Game } from '../lib/games';
 import { useAuth } from '../lib/auth';
+import { NetLine, lastNetLine, netParams } from './NetLine';
 
 /** Reviewed rallies found by the detector's clips (each clip counts for one rally) and clips matching none. */
 function score(clips: [number, number][], truth: { s: number; e: number }[]) {
@@ -27,22 +28,27 @@ export function RefreshDetector({ game, cam, onClose }: { game: Game; cam: Angle
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<ReturnType<typeof score> & { examples: number } | null>(null);
   const [error, setError] = useState('');
+  const [net, setNet] = useState(cam.net ?? lastNetLine());  // back camera: the top of the net in the picture
+  const [waitingNet, setWaitingNet] = useState(false);
   const cancel = useRef<() => void>(undefined);
   useEffect(() => () => cancel.current?.(), []);
 
-  async function run(f: File) {
-    setFile(f); setBusy(true); setError(''); setDone(null);
+  async function run(f: File, confirmed = false) {
+    setFile(f); setError(''); setDone(null);
+    if (cam.kind === 'back' && !confirmed) { setWaitingNet(true); return; }
+    setWaitingNet(false); setBusy(true);
     let lock: WakeLockSentinel | null = null;
     try { lock = await navigator.wakeLock.request('screen'); } catch { /* not supported */ }
     try {
-      const job = runDetector(f, setP, undefined, false, cam.kind);
+      const job = runDetector(f, setP, undefined, false, cam.kind, cam.kind === 'back' ? netParams(net) : {});
+      const netField = cam.kind === 'back' ? { net: Math.round(net * 1000) / 1000 } : {};
       cancel.current = job.cancel;
       const r = await job.result;
       // this camera's clips on the game's timeline, scored against the reviewed rallies
       const clips = r.rallies.map(([a, b]) => [a - cam.offset, b - cam.offset] as [number, number]);
       const sc = score(clips, game.rallies.filter(x => x.st !== 'bad'));
-      if (cam.id === 'main') await updateGame(game.id, { segments: r.segments, peaks: r.peaks });
-      else await updateGame(game.id, { angles: (game.angles ?? []).map(a => a.id === cam.id ? { ...a, segments: r.segments, peaks: r.peaks } : a) });
+      if (cam.id === 'main') await updateGame(game.id, { segments: r.segments, peaks: r.peaks, ...netField });
+      else await updateGame(game.id, { angles: (game.angles ?? []).map(a => a.id === cam.id ? { ...a, segments: r.segments, peaks: r.peaks, ...netField } : a) });
       logHistory(game.id, user, [`Refreshed the "${cam.name}" camera's detector data: it finds ${sc.found} of ${sc.total} reviewed rallies, ${sc.falses} false clips`]).catch(() => {});
       setDone({ ...sc, examples: r.segments.length });
     } catch (e) {
@@ -72,6 +78,12 @@ export function RefreshDetector({ game, cam, onClose }: { game: Game; cam: Angle
             <input type="file" accept="video/mp4,video/quicktime,.mp4,.mov" className="hidden" disabled={busy}
               onChange={e => e.target.files?.[0] && run(e.target.files[0])} />
           </label>
+        )}
+        {file && waitingNet && (
+          <div className="space-y-2">
+            <NetLine file={file} value={net} onChange={setNet} />
+            <button className="w-full rounded-lg bg-ball py-2.5 font-semibold text-bg" onClick={() => run(file, true)}>Find the rallies</button>
+          </div>
         )}
         {busy && (
           <div>

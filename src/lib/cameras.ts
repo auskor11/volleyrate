@@ -31,13 +31,14 @@ export interface Angle {
   segments?: Segment[];    // its own detector's candidates (training data for that kind of camera)
   peaks?: number[];        // contact sounds, used to line it up
   sync?: { matched: number; total: number };  // how well the auto-sync matched contact sounds
+  net?: number;            // back camera: where the top of the net is (fraction of the picture's height)
 }
 
 /** Every camera of a game, main one first (its offset is 0). */
 export function cameras(g: Game): Angle[] {
   const main: Angle = {
     id: 'main', name: g.cameraName ?? CAMERA_KINDS[g.camera ?? 'side'].label, kind: g.camera ?? 'side',
-    ...(g.behind ? { behind: g.behind } : {}), youtubeId: g.youtubeId, offset: 0, segments: g.segments, peaks: g.peaks,
+    ...(g.behind ? { behind: g.behind } : {}), ...(g.net ? { net: g.net } : {}), youtubeId: g.youtubeId, offset: 0, segments: g.segments, peaks: g.peaks,
   };
   return [main, ...(g.angles ?? [])];
 }

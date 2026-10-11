@@ -13,7 +13,10 @@ function highBall(cand, p) {
 }
 
 const uniqSorted = a => Array.from(new Set(a)).sort((x, y) => x - y);
-const ptp = a => Math.max(...a) - Math.min(...a);
+// loops, not Math.max(...a): spreading a long array (a long rally seen in every frame) overflows the stack
+const maxOf = a => { let m = -Infinity; for (const x of a) if (x > m) m = x; return m; };
+const minOf = a => { let m = Infinity; for (const x of a) if (x < m) m = x; return m; };
+const ptp = a => maxOf(a) - minOf(a);
 
 function segment(hb, p) {
   if (!hb.length) return [];
@@ -50,7 +53,7 @@ function lowerBound(a, v) {
 function audioFeats(r, au) {
   const [a, b, first] = r;
   const w = fluxRange(au, first - 1.5, first + 0.2);
-  const peak = w.length ? Math.max(...w) : 0;
+  const peak = w.length ? maxOf(w) : 0;
   const rate = fluxRange(au, a, b).filter(x => x > 6).length / (b - a);
   return [peak, rate];
 }
@@ -96,7 +99,7 @@ function splitQuiet(r, hb, au, p) {
       cur = [];
     } else {
       const w = fluxRange(au, pc[0] - 1.5, pc[0] + 0.2);
-      if (loud(pc[0] - 1.5, pc[0] + 0.2) >= 1 && Math.max(...w) >= p.serve_peak) cur = [pc];  // new serve
+      if (loud(pc[0] - 1.5, pc[0] + 0.2) >= 1 && maxOf(w) >= p.serve_peak) cur = [pc];  // new serve
     }
   }
   if (cur.length) clips.push(cur);
