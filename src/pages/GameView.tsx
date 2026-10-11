@@ -428,6 +428,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   const [showHistory, setShowHistory] = useState(false);
   const [highlighting, setHighlighting] = useState(false);
   const [teamsOpen, setTeamsOpen] = useState(false);
+  const openTeams = () => { player.current?.pauseVideo(); setTeamsOpen(true); };  // the setup has its own video
   const gameHighlights = useHighlights({ gameId: game.id });
   const starred = (r: Rally) => (gameHighlights ?? []).filter(h => Math.abs(h.s - r.s) < 1);
   const [step, setStep] = useState(false);  // pause at suggested touch moments while tagging (off until suggestions improve)
@@ -758,7 +759,8 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
           )}
         </div>
         {showHistory && <HistoryDialog gameId={game.id} onClose={() => setShowHistory(false)} />}
-        {teamsOpen && <TeamsDialog game={game} players={players ?? []} onClose={() => setTeamsOpen(false)} />}
+        {teamsOpen && <TeamsDialog game={game} players={players ?? []} onClose={() => setTeamsOpen(false)}
+          video={{ youtubeId: cam.youtubeId, offset: cam.offset, start: liveRallies[0]?.s ?? 0, name: cameraLabel(cam) }} />}
         {highlighting && rally && (
           <HighlightDialog game={game} rally={rally} players={players ?? []} onClose={() => setHighlighting(false)} />
         )}
@@ -852,7 +854,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
                   )}
                 </div>
               ) : !teamsReady && (
-                <button onClick={() => setTeamsOpen(true)} className="w-full rounded-lg border border-dashed border-line px-2 py-1.5 text-xs text-muted">
+                <button onClick={openTeams} className="w-full rounded-lg border border-dashed border-line px-2 py-1.5 text-xs text-muted">
                   Set up the teams to confirm each rally's server while reviewing →
                 </button>
               )
@@ -921,7 +923,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
             onServer={p => view && setCourt(makeServer(view.state, p), `server changed to ${name(p)}`)}
             wonBy={view && rally ? rallyWinner(view.state, rally) : null}
             needTeams={!teamsReady}
-            onTeams={() => setTeamsOpen(true)}
+            onTeams={openTeams}
             sameTeam={sameTeamIn(game)}
             onPrev={() => go(cur - 1)} onNext={() => go(cur + 1)} hasPrev={cur > 0} hasNext={cur < list.length - 1} />
         )}
@@ -941,7 +943,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
               Rotation{view ? <>{rally && scoreAt.get(rally) && <> · <b className="text-ink">A {scoreAt.get(rally)!.before.a}–{scoreAt.get(rally)!.before.b} B</b></>}: 🏐 <b className="text-ink">{name(server(view.state))}</b> serves for Team {view.state.serving.toUpperCase()}</> : teamsReady ? '' : ': teams not set up yet'}
             </summary>
             <div className="mx-auto mt-2 max-w-[17rem]">
-              <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={() => setTeamsOpen(true)}
+              <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={openTeams}
               score={rally ? scoreAt.get(rally)?.before : undefined} missed={rally ? notCounted(liveRallies.indexOf(rally)) : 0} />
             </div>
           </details>
@@ -976,7 +978,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
       {showCourt && (
         <div className="hidden min-h-0 overflow-y-auto lg:block">
           <div className="rounded-xl border border-line bg-surface p-2">
-            <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={() => setTeamsOpen(true)}
+            <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={openTeams}
               score={rally ? scoreAt.get(rally)?.before : undefined} missed={rally ? notCounted(liveRallies.indexOf(rally)) : 0} />
           </div>
         </div>
@@ -1348,7 +1350,48 @@ function nextSpot(c: CourtState, prefer: Team): string {
 }
 
 /** Set up the two teams for the first rally: tap a spot (1 → 6 goes automatically), then the player there. */
-function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]; onClose: () => void }) {
+/** The game's video inside the team setup, opened at the first rally, to see who stands where. */
+function SetupVideo({ youtubeId, offset, start, name }: { youtubeId: string; offset: number; start: number; name: string }) {
+  const el = useRef<HTMLDivElement>(null);
+  const p = useRef<YTPlayer | null>(null);
+  useEffect(() => {
+    if (!el.current) return;
+    let dead = false;
+    const host = document.createElement('div');
+    el.current.replaceChildren(host);
+    createPlayer(host, youtubeId).then(pl => {
+      if (dead) { pl.destroy(); return; }
+      p.current = withOffset(pl, () => offset);
+      // show the first rally's opening frame: play a moment (a paused video shows no picture until it has
+      // decoded one), then pause there
+      p.current.seekTo(start, true);
+      p.current.playVideo();
+      setTimeout(() => { if (!dead) p.current?.pauseVideo(); }, 700);
+    });
+    return () => { dead = true; p.current?.destroy(); p.current = null; };
+  }, [youtubeId, offset, start]);
+  const b = 'rounded-md border border-line bg-raised px-2 py-1';
+  const seek = (d: number) => { const q = p.current; if (q) q.seekTo(Math.max(0, q.getCurrentTime() + d), true); };
+  return (
+    <div className="space-y-1.5">
+      <div ref={el} className="aspect-video overflow-hidden rounded-lg bg-black" />
+      <div className="flex flex-wrap items-center gap-1 text-xs">
+        <span className="mr-auto text-muted">🎥 {name}</span>
+        <button className={b} onClick={() => { p.current?.seekTo(start, true); p.current?.playVideo(); }}>⏮ First rally</button>
+        <button className={b} onClick={() => seek(-5)}>−5s</button>
+        <button className={b} onClick={() => seek(-1)}>−1s</button>
+        <button className={b} onClick={() => { const q = p.current; if (q) { if (q.getPlayerState() === 1) q.pauseVideo(); else q.playVideo(); } }}>⏯</button>
+        <button className={b} onClick={() => seek(1)}>+1s</button>
+        <button className={b} onClick={() => seek(5)}>+5s</button>
+      </div>
+    </div>
+  );
+}
+
+function TeamsDialog({ game, players, onClose, video }: {
+  game: Game; players: Player[]; onClose: () => void;
+  video: { youtubeId: string; offset: number; start: number; name: string };
+}) {
   const user = useAuth()?.user ?? null;
   const games = useGames();
   const blank: CourtSetup = { a: emptySide(), b: emptySide(), serving: 'a' };
@@ -1418,7 +1461,13 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center" onClick={onClose}>
-      <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-2xl border border-line bg-surface p-4 sm:rounded-2xl" onClick={e => e.stopPropagation()}>
+      <div className="max-h-[94dvh] w-full max-w-6xl overflow-y-auto rounded-t-2xl border border-line bg-surface p-4 sm:rounded-2xl lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-5" onClick={e => e.stopPropagation()}>
+        {/* the video stays in view while scrolling the setup on a wide screen */}
+        <div className="mb-3 lg:sticky lg:top-0 lg:mb-0 lg:self-start">
+          <SetupVideo {...video} />
+          <p className="mt-1.5 text-[11px] text-muted">Pause on the first serve: the server is at position 1. Then go round anticlockwise.</p>
+        </div>
+        <div className="min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div>
             <h2 className="font-semibold">Starting teams</h2>
@@ -1426,8 +1475,8 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
           </div>
           {prev && <button className="shrink-0 rounded-md border border-line px-2 py-1 text-xs" onClick={() => { const { score: _s, ...rest } = gameSetup(prev)!; const x = tidy(rest); setC(x); setTarget(nextSpot(x, 'a')); }}>Copy from {prev.title}</button>}
         </div>
-        <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
-          <div className="mx-auto w-full max-w-[15rem]">
+        <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)]">
+          <div className="mx-auto w-full max-w-[13rem]">
             <Court c={c} name={name} allowEmpty target={target}
               onSlot={k => setTarget(k)} onChange={x => setC(tidy({ ...c, ...x }))} />
           </div>
@@ -1579,6 +1628,7 @@ function TeamsDialog({ game, players, onClose }: { game: Game; players: Player[]
             {busy ? 'Saving…' : 'Save teams'}
           </button>
           <button onClick={onClose} className="rounded-lg border border-line px-4 py-2.5">Cancel</button>
+        </div>
         </div>
       </div>
     </div>
