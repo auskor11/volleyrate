@@ -115,7 +115,7 @@ function addTouches(r: Rally, clip: (t: number) => Clip, add: Add, sameTeam?: Sa
   } else {
     add(t.p, ERROR[t.k] ?? 'oerr', clip(t.t));
     // the serve / attack / block that forced this error also scored
-    const f = forcedBy(ts, r.end);
+    const f = forcedBy(ts, r.end, sameTeam);
     if (f >= 0) {
       const by = ts[f];
       add(by.p, POINT[by.k], clip(by.t));

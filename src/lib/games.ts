@@ -79,25 +79,32 @@ export function nextSkill(touches: Touch[]): Skill {
 }
 
 // A defensive error right after the other side's serve / attack / block / set-over also scores for that
-// touch: serve → receive/dig error = ace; attack → receive/dig/block error = kill; block → receive/dig
+// touch: serve → receive/dig error = ace; attack → any error by the other team = kill; block → receive/dig
 // error = block point; a set that goes over → receive/dig/block error = set-over point for the setter.
 const FORCED: Partial<Record<Skill, Skill[]>> = {
   serve: ['receive', 'dig'],
-  attack: ['receive', 'dig', 'block'],
+  // an attack forces any error the other team makes on the next touch (receive, dig, block, set, free ball, …)
+  attack: Object.keys(SKILLS) as Skill[],
   block: ['receive', 'dig'],
   set: ['receive', 'dig', 'block'],
 };
 const POINT_LABEL: Partial<Record<Skill, string>> = { serve: 'Ace', attack: 'Kill', block: 'Block', set: 'Set over' };
 
-/** Index of the touch that earned the point when the rally ended on a forced defensive error, else -1. */
-export function forcedBy(touches: Touch[], end: RallyEnd): number {
-  if (end.r !== 'error' || end.i < 1) return -1;
-  const err = touches[end.i], prev = touches[end.i - 1];
-  return prev && err && prev.p !== err.p && FORCED[prev.k]?.includes(err.k) ? end.i - 1 : -1;
-}
-
 /** Whether two players could be teammates: false only when they're known to be on different teams. */
 export type SameTeam = (a: string, b: string) => boolean;
+
+/**
+ * Index of the touch that earned the point when the rally ended on a forced error, else -1: the error came
+ * straight after that touch, by a different player. After an attack, an error on a set, free ball or anything
+ * else besides a receive / dig / block only counts when the court setup puts the two on different teams.
+ */
+export function forcedBy(touches: Touch[], end: RallyEnd, sameTeam?: SameTeam): number {
+  if (end.r !== 'error' || end.i < 1) return -1;
+  const err = touches[end.i], prev = touches[end.i - 1];
+  if (!prev || !err || prev.p === err.p || !FORCED[prev.k]?.includes(err.k)) return -1;
+  const defensive = err.k === 'receive' || err.k === 'dig' || err.k === 'block';
+  return defensive || !sameTeam?.(prev.p, err.p) ? end.i - 1 : -1;
+}
 
 /**
  * Who gets the assist for the attack at touch i, as a touch index (-1 = nobody): the set just before it,
@@ -120,7 +127,7 @@ export function rallyResult(r: Rally, sameTeam?: SameTeam): { label: string; goo
     const point = r.end.r === 'point';
     // the set (or a teammate's dig) just before a kill is an assist
     const assistFor = (i: number) => { const a = assistIndex(ts, i, sameTeam); return a >= 0 ? ts[a].p : undefined; };
-    const f = forcedBy(ts, r.end);
+    const f = forcedBy(ts, r.end, sameTeam);
     if (f >= 0) {
       const by = ts[f];
       return { label: POINT_LABEL[by.k]!, good: true, who: by.p, note: `${SKILLS[t.k].toLowerCase()} error`, noteWho: t.p, assist: assistFor(f) };

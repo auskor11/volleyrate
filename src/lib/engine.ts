@@ -12,7 +12,8 @@
 // - Recent sessions count more: a session's weight halves every 8 sessions (all games on one date equal).
 // - Only rallies tagged touch-by-touch (with a result) count; quick point tags lack attempt counts.
 // - No caps beyond the 0–99 scale.
-import { DEFAULT_SET_GRADE, forcedBy, gameWeight, isApplied, isGuest, type Game, type Skill } from './games';
+import { sameTeamIn } from './stats';
+import { DEFAULT_SET_GRADE, assistIndex, forcedBy, gameWeight, isApplied, isGuest, type Game, type Skill } from './games';
 import type { Player } from './data';
 import type { Ratings } from './ratings';
 
@@ -73,6 +74,7 @@ const zero = (): Counts => ({
 function gameCounts(g: Game): Record<string, Counts> {
   const out: Record<string, Counts> = {};
   const c = (p: string) => (out[p] ??= zero());
+  const sameTeam = sameTeamIn(g);
   const ATT: Partial<Record<Skill, keyof Counts>> = { attack: 'attacks', serve: 'serves', set: 'sets', block: 'blocks', receive: 'ctrl', dig: 'ctrl' };
   const ERR: Partial<Record<Skill, keyof Counts>> = { attack: 'aerr', serve: 'serr', set: 'setErr', block: 'blockErr', receive: 'ctrlErr', dig: 'ctrlErr' };
   const PT: Partial<Record<Skill, keyof Counts>> = { attack: 'kills', serve: 'aces', block: 'blockPts', set: 'setPts' };
@@ -93,15 +95,17 @@ function gameCounts(g: Game): Record<string, Counts> {
     const t = ts[r.end.i], prev = ts[r.end.i - 1];
     if (!t) continue;
     const credit = (i: number) => {  // point for touch i (+ assist / blocked bookkeeping)
-      const x = ts[i], before = ts[i - 1];
+      const x = ts[i];
       const pk = PT[x.k]; if (pk) c(x.p)[pk]++;
-      if (x.k === 'attack' && before?.k === 'set' && before.p !== x.p) c(before.p).assists++;
+      // set assists only (a teammate's set, never one that went over): dig assists don't count in set efficiency
+      const a = assistIndex(ts, i, sameTeam);
+      if (a >= 0 && ts[a].k === 'set') c(ts[a].p).assists++;
     };
     if (r.end.r === 'point') {
       credit(r.end.i);
       if (t.k === 'block' && prev?.k === 'attack' && prev.p !== t.p) c(prev.p).blocked++;
     } else {
-      const f = forcedBy(ts, r.end);
+      const f = forcedBy(ts, r.end, sameTeam);
       const w = f >= 0 && (t.k === 'receive' || t.k === 'dig') ? FORCED_ERROR_WEIGHT : 1;
       c(t.p).errors += w;
       const ek = ERR[t.k]; if (ek) c(t.p)[ek] += w;

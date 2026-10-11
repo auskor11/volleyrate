@@ -108,11 +108,12 @@ A rally counts only if it is not marked "Not a rally", has touches tagged, and h
     | Previous touch | Error on | Credited as |
     |---|---|---|
     | Serve | receive / dig | ace |
-    | Attack | receive / dig / block | kill (plus the assist rule above) |
+    | Attack | any touch by the other team (receive, dig, block, set, free ball, …) | kill (plus the assist rule above) |
     | Block | receive / dig | block point |
     | Set that goes over | receive / dig / block | set-over point (counts like an assist in set efficiency) |
 
-  - A forced **receive or dig** error counts **0.5** against the defender's Receiving and Consistency (`FORCED_ERROR_WEIGHT`). A forced block error counts in full.
+  - After an attack, a receive / dig / block error is always forced. Any other error (a set, a free ball, …) is forced only when the court setup puts the attacker and the player who erred on different teams.
+  - A forced **receive or dig** error counts **0.5** against the defender's Receiving and Consistency (`FORCED_ERROR_WEIGHT`). Other forced errors (block, set, …) count in full.
 
 - A player is never credited for their own touch: no assist for setting yourself, and no "blocked" for blocking your own attack.
 - Guests are left out of both ratings and the benchmark. Their touches still affect credit: for example, a guest's serve still makes the next receive error count as forced (0.5).
