@@ -1469,10 +1469,14 @@ function TeamsDialog({ game, players, onClose, video }: {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center" onClick={onClose}>
       <div className="max-h-[94dvh] w-full max-w-6xl overflow-y-auto rounded-t-2xl border border-line bg-surface p-4 sm:rounded-2xl lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-5" onClick={e => e.stopPropagation()}>
-        {/* the video stays in view while scrolling the setup on a wide screen */}
-        <div className="mb-3 lg:sticky lg:top-0 lg:mb-0 lg:self-start">
+        {/* left: the video with the court under it; right: names and settings */}
+        <div className="mb-3 space-y-3 lg:mb-0">
           <SetupVideo {...video} />
-          <p className="mt-1.5 text-[11px] text-muted">Pause on the first serve: the server is at position 1. Then go round anticlockwise.</p>
+          <p className="text-[11px] text-muted">Pause on the first serve: the server is at position 1. Then go round anticlockwise.</p>
+          <div className="mx-auto w-full max-w-[17rem]">
+            <Court c={c} name={name} allowEmpty target={target}
+              onSlot={k => setTarget(k)} onChange={x => setC(tidy({ ...c, ...x }))} />
+          </div>
         </div>
         <div className="min-w-0">
         <div className="flex items-start justify-between gap-2">
@@ -1482,11 +1486,7 @@ function TeamsDialog({ game, players, onClose, video }: {
           </div>
           {prev && <button className="shrink-0 rounded-md border border-line px-2 py-1 text-xs" onClick={() => { const { score: _s, ...rest } = gameSetup(prev)!; const x = tidy(rest); setC(x); setTarget(nextSpot(x, 'a')); }}>Copy from {prev.title}</button>}
         </div>
-        <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)]">
-          <div className="mx-auto w-full max-w-[13rem]">
-            <Court c={c} name={name} allowEmpty target={target}
-              onSlot={k => setTarget(k)} onChange={x => setC(tidy({ ...c, ...x }))} />
-          </div>
+        <div className="mt-3">
           <div className="min-w-0 space-y-3">
             <div className="rounded-lg bg-raised px-3 py-2 text-sm">
               {tSpot >= 0
