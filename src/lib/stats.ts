@@ -99,10 +99,10 @@ type Add = (pid: string | undefined, k: StatKey | undefined, c: Clip) => void;
 
 function addTouches(r: Rally, clip: (t: number) => Clip, add: Add, sameTeam?: SameTeam) {
   const ts = r.touches!;
-  const erred = r.end?.r === 'error' ? r.end.i : -1;
+  if (!r.end) return;  // a rally counts once its result is tagged (a serve confirmed in review isn't stats yet)
+  const erred = r.end.r === 'error' ? r.end.i : -1;
   ts.forEach((t, j) => { add(t.p, ATTEMPT[t.k], clip(t.t)); detail(t, !!r.end && j !== erred).forEach(k => add(t.p, k, clip(t.t))); });
   const kill = (x: Touch) => { if (x.k === 'attack' && x.a) add(x.p, TYPE_KILL[x.a], clip(x.t)); };
-  if (!r.end) return;
   const t = ts[r.end.i], prev = ts[r.end.i - 1];
   if (!t) return;
   if (r.end.r === 'point') {

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth';
 import { usePlayers, type Player } from '../lib/data';
 import {
-  ATTACK_TYPES, DEFAULT_SET_GRADE, GRADED, GRADE_LABELS, SKILLS, guestName, isGuest, deleteGame, fmtTime, isTagged, nextSkill, rallyResult, saveRallies, suggestTouches,
+  ATTACK_TYPES, DEFAULT_SET_GRADE, GRADED, GRADE_LABELS, SKILLS, guestName, guestTeam, isGuest, deleteGame, fmtTime, isTagged, nextSkill, rallyResult, saveRallies, suggestTouches,
   updateGame, useGame, type AttackType, type Game, type SameTeam, type Grade, type Rally, type RallyEnd, type Skill, type Touch,
 } from '../lib/games';
 import { createPlayer, withOffset, type YTPlayer } from '../lib/youtube';
@@ -19,7 +19,7 @@ import { logHistory, setGameRating, useGames, useHistory } from '../lib/games';
 import { addHighlight, useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
 import {
-  BACK_COURT_PLAYERS, ROLE_NAMES, START_ROLES, TEAMS, courtFor, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
+  BACK_COURT_PLAYERS, ROLE_NAMES, START_ROLES, TEAMS, courtFor, guestServes, sameCourt, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
   scoreSheet, server, setupReady, startCourt,
   type CourtSetup, type CourtState, type CourtView, type Team,
 } from '../lib/rotation';
@@ -555,6 +555,34 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
     edit({ st: nst }, `marked ${nst === 'ok' ? 'good' : nst === 'bad' ? 'not a rally' : nst === 'auto' ? 'unchecked' : 'added'}`);
     if (rally.st !== st && cur < list.length - 1) setTimeout(() => go(cur + 1), 150);
   };
+  // Review: confirm who served (the court's prediction, or the reviewer's pick) as the rally's first touch
+  const [pickServer, setPickServer] = useState(false);
+  useEffect(() => setPickServer(false), [rally?.s]);
+  const predictedServer = view ? (isGuest(server(view.state)) ? `guest-${view.state.serving}` : server(view.state)) : null;
+  const reviewServer = rally?.touches?.[0]?.k === 'serve' ? rally.touches[0].p : predictedServer;
+  const serverTeam = (p: string): Team | null => guestTeam(p) ?? (view ? TEAMS.find(t => view.state[t].pos.includes(p) || view.state[t].bench.includes(p)) ?? null : null);
+  const good = (p = reviewServer, court?: CourtState) => {
+    if (!rally) return;
+    if (!p || !view) { mark('ok'); return; }  // no teams set up: plain review
+    const r0 = rally;
+    const ts = r0.touches ?? [];
+    const t = Math.round((suggestTouches(game.peaks, r0.s, r0.e)[0] ?? r0.s) * 10) / 10;
+    const touches = !ts.length ? [{ p, k: 'serve' as Skill, t }] : ts[0].k === 'serve' ? [{ ...ts[0], p }, ...ts.slice(1)] : ts;
+    const nst = r0.st === 'added' ? 'added' : 'ok';
+    // one save: status, serve, and (when the server was changed) the corrected court
+    const fix = court ? { court: { ...courtOnly(court), manual: true } } : {};
+    commit(rallies.map(r => (r === r0 ? { ...r, st: nst, touches, ...fix } : r)), r0.s,
+      [`rev:${r0.as ?? r0.s}:st`, `${label(r0)}: marked good · ${name(p)} served${court ? ' (court corrected)' : ''}`]);
+    if (cur < list.length - 1) setTimeout(() => go(cur + 1), 150);
+  };
+  // the reviewer says someone else served: line the court up with them (from this rally on), then confirm
+  const chooseServer = (p: string) => {
+    setPickServer(false);
+    if (!view) return;
+    const g = guestTeam(p);
+    const c = g ? guestServes(view.state, g) : makeServer(view.state, p);
+    good(p, sameCourt(c, view.state) ? undefined : c);
+  };
   const setStart = () => { const t = now(); if (rally && t < rally.e) edit({ s: t, st: rally.st === 'auto' ? 'ok' : rally.st }, `start: changed start to ${fmtTime(t)}`); };
   const setEnd = () => { const t = now(); if (rally && t > rally.s) edit({ e: t, st: rally.st === 'auto' ? 'ok' : rally.st }, `end: changed end to ${fmtTime(t)}`); };
   const add = () => { const s = now(); commit([...rallies, { s, e: s + 6, st: 'added' }], s, [`add:${s}`, `Added a rally at ${fmtTime(s)}`]); };
@@ -604,7 +632,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
       if (e.metaKey || e.ctrlKey || (e.target as HTMLElement).tagName === 'INPUT') return;
       const k = e.key.toLowerCase();
       const map: Record<string, () => void> = {
-        y: () => mark('ok'), x: () => mark('bad'), '[': setStart, ']': setEnd, a: add, r: () => go(cur),
+        y: () => good(), x: () => mark('bad'), '[': setStart, ']': setEnd, a: add, r: () => go(cur),
         ',': () => skip(-5), '.': () => skip(5),
         arrowright: () => go(cur + 1), arrowleft: () => go(cur - 1), n: () => go(cur + 1), p: () => go(cur - 1),
       };
@@ -776,9 +804,43 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
           </>
         ) : (
           <div className="space-y-2">
+            {rally && rally.st !== 'bad' && (
+              teamsReady && reviewServer ? (
+                <div className="rounded-lg bg-raised px-2 py-1.5 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate">
+                      🏐 <b>{name(reviewServer)}</b> serves{serverTeam(reviewServer) && <span className="text-muted"> · Team {serverTeam(reviewServer)!.toUpperCase()}</span>}
+                      {rally.touches?.[0]?.k === 'serve' && <span className="text-good"> · confirmed</span>}
+                    </span>
+                    <button className="shrink-0 rounded-md border border-line px-2 py-1 text-xs" onClick={() => setPickServer(!pickServer)}>{pickServer ? 'Cancel' : 'Change'}</button>
+                  </div>
+                  {pickServer && view && (
+                    <div className="mt-1.5 space-y-1">
+                      {TEAMS.map(t => (
+                        <div key={t} className="flex flex-wrap items-center gap-1 text-xs">
+                          <span className="w-12 text-muted">Team {t.toUpperCase()}</span>
+                          {view.state[t].pos.filter(p => p && !isGuest(p)).map(p => (
+                            <button key={p} onClick={() => chooseServer(p)} className="rounded-md border border-line bg-surface px-2 py-1 font-semibold">{name(p)}</button>
+                          ))}
+                          {view.state[t].pos.some(isGuest) && (
+                            <button onClick={() => chooseServer(`guest-${t}`)} className="rounded-md border border-line bg-surface px-2 py-1 text-muted">Guest {t.toUpperCase()}</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : !teamsReady && (
+                <button onClick={() => setTeamsOpen(true)} className="w-full rounded-lg border border-dashed border-line px-2 py-1.5 text-xs text-muted">
+                  Set up the teams to confirm each rally's server while reviewing →
+                </button>
+              )
+            )}
             <div className="grid grid-cols-2 gap-2">
               <button className={`${btn} text-bad`} disabled={!rally} onClick={() => mark('bad')}>✗ Not a rally</button>
-              <button className={`${btn} text-good`} disabled={!rally} onClick={() => mark('ok')}>✓ Good</button>
+              <button className={`${btn} text-good`} disabled={!rally} onClick={() => good()}>
+                ✓ Good{teamsReady && reviewServer ? ` · ${name(reviewServer)} serves` : ''}
+              </button>
             </div>
             <div className="grid grid-cols-5 gap-2">
               <button className={btn} disabled={cur <= 0} onClick={() => go(cur - 1)}>◀</button>

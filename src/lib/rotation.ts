@@ -206,12 +206,22 @@ export const startCourt = (c: CourtSetup): CourtState => {
   return { ...n, a: side('a'), b: side('b') };
 };
 
+/** A guest of team t serves: that team serves, rotated until a guest's spot is at position 1. */
+export function guestServes(c: CourtState, t: Team): CourtState {
+  let s = c[t];
+  for (let k = 0; k < 6 && !isGuest(s.pos[0]); k++) s = rotate(s);
+  return isGuest(s.pos[0]) ? { ...c, [t]: s, serving: t } : c;
+}
+
 /** The court after rally r, and who won it. */
 function advance(c: CourtState, r: Rally): { next: CourtState; winner: Team | null } {
   let cur = c;
-  // a tagged serve by someone else (games tagged before courts existed): line the rotation up with it
+  // a tagged or confirmed serve by someone else: line the rotation up with it
   const sv = r.touches?.[0];
-  if (sv?.k === 'serve' && !isGuest(sv.p) && sv.p !== server(c)) cur = makeServer(c, sv.p);
+  if (sv?.k === 'serve') {
+    if (!isGuest(sv.p)) { if (sv.p !== server(c)) cur = makeServer(c, sv.p); }
+    else { const gt = guestTeam(sv.p); if (gt && !(c.serving === gt && isGuest(server(c)))) cur = guestServes(c, gt); }
+  }
   const winner = rallyWinner(cur, r);
   if (!winner || winner === cur.serving) return { next: cur, winner };
   // side-out: the winners rotate and serve; the team that lost its serve gets its libero back
