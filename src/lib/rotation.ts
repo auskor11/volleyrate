@@ -67,7 +67,8 @@ export function roleAt(s: Side, i: number): string {
   const p = s.pos[i];
   if (p && s.l6 && p === s.l6) return s.l6front ? 'L/MB' : 'L';
   const middle = s.roles[i] === 'MB' || s.roles[i] === 'L';
-  if (middle && s.mid) return p === s.lib ? 'L' : 'MB';  // libero system: whoever stands in a middle spot
+  // libero system (in play, or chosen in the setup): whoever stands in a middle spot is the libero or a middle
+  if (middle && (s.mid || s.lib)) return p === s.lib ? 'L' : 'MB';
   if (s.roles[i] !== 'L') return s.roles[i];
   if (p && p === s.mb) return 'MB';
   return s.bench.length ? 'L' : 'MB';         // six players, no subs: no libero
