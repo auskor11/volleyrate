@@ -1447,7 +1447,13 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
   // the extra middle must be on the bench; nobody starts subbed in for the libero
   const tidy = (x: CourtSetup): CourtSetup => {
     const fix = (sd: CourtSetup['a']) => {
-      const { mb, lib, mid: _m, l6, l6front, ...rest } = sd;
+      const { mb: mb0, lib, mid: _m, l6, l6front, ...rest } = sd;
+      // the libero starts on the bench: the middle standing in the libero's spot is the one they swap with
+      let mb = mb0;
+      if (lib && sd.bench.includes(lib) && !(mb && mb !== lib && (sd.bench.includes(mb) || sd.pos.includes(mb)))) {
+        const o = sd.pos[sd.roles.indexOf('L')];
+        mb = o && o !== lib ? o : undefined;
+      }
       if (mb && (sd.bench.includes(mb) || sd.pos.includes(mb))) {
         // an extra middle (on the bench, or on court when editing mid-set): the team plays with a libero
         // (chosen, or whoever stands in the back-row middle spot)
@@ -1462,7 +1468,9 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
     };
     return { ...x, a: fix(x.a), b: fix(x.b) };
   };
-  const setMb = (t: Team, id: string | null) => setC(x => tidy({ ...x, [t]: { ...x[t], mb: id ?? undefined } }));
+  const setMb = (t: Team, id: string | null) => setC(x => tidy({ ...x, [t]: { ...x[t], mb: id ?? undefined, ...(id && x[t].lib === id ? { lib: undefined } : {}) } }));
+  // a sub who is the libero (starting on the bench while a middle plays in their place)
+  const setLib = (t: Team, id: string | null) => setC(x => tidy({ ...x, [t]: { ...x[t], lib: id ?? undefined, mb: id ? undefined : x[t].mb } }));
   const setL6 = (t: Team, id: string, front: boolean) => setC(x => tidy({ ...x, [t]: { ...x[t], l6: id, l6front: front } }));
   const sixes = TEAMS.filter(t => !c[t].mb && c[t].pos.every(Boolean));  // teams without a libero
   const ok = setupReady(c);
@@ -1601,17 +1609,24 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
             )}
             {TEAMS.some(t => c[t].bench.length > 0) && (
               <div className="space-y-1.5">
-                <p className="text-xs text-muted">Extra middle blocker (then the team plays with a libero)</p>
+                <p className="text-xs text-muted">
+                  Is a sub the <b className="text-ink">extra middle</b> (MB) or the <b className="text-ink">libero</b> (L)? Either way the team plays
+                  with a libero. Leave both off for ordinary subs.
+                </p>
                 {TEAMS.filter(t => c[t].bench.length).map(t => (
                   <div key={t} className="flex flex-wrap items-center gap-1.5 text-xs">
                     <span className="w-14 text-muted">Team {t.toUpperCase()}</span>
-                    {[...new Set(c[t].bench)].map(p => (
-                      <button key={p} onClick={() => setMb(t, c[t].mb === p ? null : p)}
-                        className={`rounded-md border px-2 py-1 ${c[t].mb === p ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>
-                        {name(p)}{c[t].mb === p ? ' · MB' : ''}
-                      </button>
-                    ))}
-                    <span className="text-muted">{c[t].mb ? '' : 'none'}</span>
+                    {[...new Set(c[t].bench)].map(p => {
+                      const isMb = c[t].mb === p, isLib = c[t].lib === p;
+                      const seg = (on: boolean) => `px-2 py-1 ${on ? 'bg-ball/20 text-ball' : 'text-muted'}`;
+                      return (
+                        <span key={p} className={`inline-flex items-center overflow-hidden rounded-md border ${isMb || isLib ? 'border-ball' : 'border-line'}`}>
+                          <span className="px-2 py-1 text-ink">{name(p)}</span>
+                          <button className={seg(isMb)} onClick={() => setMb(t, isMb ? null : p)}>MB</button>
+                          {p !== 'guest' && <button className={seg(isLib)} onClick={() => setLib(t, isLib ? null : p)}>L</button>}
+                        </span>
+                      );
+                    })}
                   </div>
                 ))}
                 {TEAMS.filter(t => c[t].mb).map(t => {

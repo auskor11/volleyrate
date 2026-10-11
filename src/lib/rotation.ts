@@ -215,10 +215,18 @@ export const placeSpecialists = (c: CourtState): CourtState => ({
 /** After the teams are re-entered at some rally: work out the middles and libero again from that lineup. */
 export const assignMiddles = (c: CourtState): CourtState => ({ ...c, a: withMiddles(c.a), b: withMiddles(c.b) });
 
-/** The court at the first rally: middles and libero placed for who serves first. */
+/**
+ * The court at the first rally, as entered (who actually stands where). The libero rule only steps in if
+ * the entered lineup can't be right: the libero in the front row, or serving.
+ */
 export const startCourt = (c: CourtSetup): CourtState => {
   const n = courtOnly(c);
-  const side = (t: Team) => liberoRule(withMiddles(backCourtSwap(n[t])), n.serving === t);
+  const side = (t: Team) => {
+    const s = withMiddles(backCourtSwap(n[t]));
+    const i = s.lib ? s.pos.indexOf(s.lib) : -1;
+    const illegal = i >= 1 && i <= 3 || (i === 0 && n.serving === t);
+    return illegal ? liberoRule(s, n.serving === t) : s;
+  };
   return { ...n, a: side('a'), b: side('b') };
 };
 
