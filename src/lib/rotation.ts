@@ -108,11 +108,11 @@ function touchTeams(c: CourtState, ts: Touch[]): (Team | null)[] {
   return out;
 }
 
-/** Which team won the rally, or null if the tags can't tell (or it isn't tagged). */
+/** Which team won the rally: from its tags, else as told in review, else null. */
 export function rallyWinner(c: CourtState, r: Rally): Team | null {
-  if (!r.touches?.length || !r.end) return null;
+  if (!r.touches?.length || !r.end) return r.won ?? null;
   const t = touchTeams(c, r.touches)[r.end.i];
-  if (!t) return null;
+  if (!t) return r.won ?? null;
   return r.end.r === 'point' ? t : other(t);
 }
 

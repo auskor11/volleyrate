@@ -561,7 +561,22 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   const predictedServer = view ? (isGuest(server(view.state)) ? `guest-${view.state.serving}` : server(view.state)) : null;
   const reviewServer = rally?.touches?.[0]?.k === 'serve' ? rally.touches[0].p : predictedServer;
   const serverTeam = (p: string): Team | null => guestTeam(p) ?? (view ? TEAMS.find(t => view.state[t].pos.includes(p) || view.state[t].bench.includes(p)) ?? null : null);
-  const good = (p = reviewServer, court?: CourtState) => {
+  // The server is always one of two people: the same team served again (it won the last rally) or the
+  // other team's next server (side-out). Each choice also records who won the previous rally.
+  const liveIdx = rally ? liveRallies.indexOf(rally) : -1;
+  const prevLive = liveIdx > 0 ? liveRallies[liveIdx - 1] : null;
+  const prevServing = view && prevLive ? courtFor(setup!, liveRallies, liveIdx - 1).state.serving : null;
+  const serveOptions = view && prevLive && prevServing && !view.saved
+    ? (() => {
+        const opts = ([prevServing, prevServing === 'a' ? 'b' : 'a'] as Team[]).map(w => {
+          const v = courtFor(setup!, liveRallies.map(r => (r === prevLive ? { ...r, won: w } : r)), liveIdx);
+          const sp = server(v.derived);
+          return { won: w, p: isGuest(sp) ? `guest-${v.derived.serving}` : sp, again: w === prevServing };
+        });
+        return opts[0].p === opts[1].p ? [opts[0]] : opts;  // the previous rally's tags already decide it
+      })()
+    : null;
+  const good = (p = reviewServer, court?: CourtState, won?: Team) => {
     if (!rally) return;
     if (!p || !view) { mark('ok'); return; }  // no teams set up: plain review
     const r0 = rally;
@@ -571,8 +586,8 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
     const nst = r0.st === 'added' ? 'added' : 'ok';
     // one save: status, serve, and (when the server was changed) the corrected court
     const fix = court ? { court: { ...courtOnly(court), manual: true } } : {};
-    commit(rallies.map(r => (r === r0 ? { ...r, st: nst, touches, ...fix } : r)), r0.s,
-      [`rev:${r0.as ?? r0.s}:st`, `${label(r0)}: marked good · ${name(p)} served${court ? ' (court corrected)' : ''}`]);
+    commit(rallies.map(r => (r === r0 ? { ...r, st: nst, touches, ...fix } : won && r === prevLive ? { ...r, won } : r)), r0.s,
+      [`rev:${r0.as ?? r0.s}:st`, `${label(r0)}: marked good · ${name(p)} served${court ? ' (court corrected)' : ''}${won ? ` · Team ${won.toUpperCase()} won the rally before` : ''}`]);
     if (cur < list.length - 1) setTimeout(() => go(cur + 1), 150);
   };
   // the reviewer says someone else served: line the court up with them (from this rally on), then confirm
@@ -632,7 +647,9 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
       if (e.metaKey || e.ctrlKey || (e.target as HTMLElement).tagName === 'INPUT') return;
       const k = e.key.toLowerCase();
       const map: Record<string, () => void> = {
-        y: () => good(), x: () => mark('bad'), '[': setStart, ']': setEnd, a: add, r: () => go(cur),
+        y: () => serveOptions ? good(serveOptions[0].p, undefined, serveOptions.length > 1 ? serveOptions[0].won : undefined) : good(),
+        u: () => { if (serveOptions?.[1]) good(serveOptions[1].p, undefined, serveOptions[1].won); },
+        x: () => mark('bad'), '[': setStart, ']': setEnd, a: add, r: () => go(cur),
         ',': () => skip(-5), '.': () => skip(5),
         arrowright: () => go(cur + 1), arrowleft: () => go(cur - 1), n: () => go(cur + 1), p: () => go(cur - 1),
       };
@@ -836,12 +853,28 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
                 </button>
               )
             )}
-            <div className="grid grid-cols-2 gap-2">
-              <button className={`${btn} text-bad`} disabled={!rally} onClick={() => mark('bad')}>✗ Not a rally</button>
-              <button className={`${btn} text-good`} disabled={!rally} onClick={() => good()}>
-                ✓ Good{teamsReady && reviewServer ? ` · ${name(reviewServer)} serves` : ''}
-              </button>
-            </div>
+            {serveOptions && rally?.st !== 'bad' ? (
+              <div className="grid grid-cols-[auto_1fr_1fr] gap-2">
+                <button className={`${btn} text-bad`} onClick={() => mark('bad')}>✗ Not a rally</button>
+                {serveOptions.map((o, i) => {
+                  const chosen = rally?.touches?.[0]?.k === 'serve' ? rally.touches[0].p === o.p : i === 0;
+                  return (
+                    <button key={o.won} onClick={() => good(o.p, undefined, serveOptions.length > 1 ? o.won : undefined)}
+                      className={`${btn} ${chosen ? 'border-good text-good' : 'text-ink'}`}>
+                      ✓ {name(o.p)} {serveOptions.length > 1 ? (o.again ? 'again' : '· side-out') : 'serves'}
+                      <span className="ml-1 hidden text-[10px] opacity-60 lg:inline">{i === 0 ? 'Y' : 'U'}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <button className={`${btn} text-bad`} disabled={!rally} onClick={() => mark('bad')}>✗ Not a rally</button>
+                <button className={`${btn} text-good`} disabled={!rally} onClick={() => good()}>
+                  ✓ Good{teamsReady && reviewServer ? ` · ${name(reviewServer)} serves` : ''}
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-5 gap-2">
               <button className={btn} disabled={cur <= 0} onClick={() => go(cur - 1)}>◀</button>
               <button className={btn} disabled={!rally} onClick={setStart} title="Set start to now">Start ⇤</button>

@@ -20,6 +20,7 @@ export interface Rally {
   sk?: number[];           // suggested touch moments the tagger skipped ("not a touch"), for tuning
   by?: string;             // who last edited this rally (first name)
   court?: CourtState;      // where everyone stood, as checked when the rally was tagged or edited
+  won?: Team;              // who won, as told in review (used until the rally's tags say)
 }
 
 // Edit history: games/{id}/history, append-only.
