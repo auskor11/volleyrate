@@ -3,12 +3,15 @@ import type { Player } from '../lib/data';
 import { CATEGORIES, categoryScore, overall, tier, type Position, type Ratings } from '../lib/ratings';
 
 /** `as`: show the ratings weighted for another position (a what-if; the profile's positions stay as they are). */
-export function PlayerCard({ player, size = 'md', as }: { player: Player & { base?: Ratings }; size?: 'md' | 'lg'; as?: Position }) {
+export function PlayerCard({ player, size = 'md', as }: { player: Player & { base?: Ratings; prev?: Ratings; since?: string }; size?: 'md' | 'lg'; as?: Position }) {
   const pos = as ?? player.positions[0] ?? 'OH';
   const whatIf = !!as && as !== player.positions[0];
   const ovr = overall(player.ratings, pos);
-  const start = player.base ? overall(player.base, pos) : null;
+  // change in overall from the latest session (ratings before it vs now)
+  const before = player.prev ?? player.base;
+  const start = before ? overall(before, pos) : null;
   const diff = ovr !== null && start !== null ? ovr - start : 0;
+  const sinceLabel = player.since && new Date(`${player.since}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
   const big = size === 'lg';
   return (
     <Link
@@ -21,8 +24,8 @@ export function PlayerCard({ player, size = 'md', as }: { player: Player & { bas
           <div className={`flex items-start gap-1 font-display font-bold leading-none ${big ? 'text-6xl' : 'text-4xl'}`}>
             {ovr ?? 'NR'}
             {diff !== 0 && (
-              <span className={`rounded px-1 py-0.5 font-sans font-bold leading-none ${big ? 'text-sm' : 'text-[10px]'} ${diff > 0 ? 'bg-green-900/80 text-green-200' : 'bg-red-900/80 text-red-200'}`}>
-                {diff > 0 ? '▲' : '▼'}{Math.abs(diff)}
+              <span title={sinceLabel ? `Change from the ${sinceLabel} session` : 'Change from starting ratings'} className={`rounded px-1 py-0.5 font-sans font-bold leading-none ${big ? 'text-sm' : 'text-[10px]'} ${diff > 0 ? 'bg-green-900/80 text-green-200' : 'bg-red-900/80 text-red-200'}`}>
+                {diff > 0 ? '▲' : '▼'}{Math.abs(diff)}{big && sinceLabel ? <span className="font-normal opacity-70"> {sinceLabel}</span> : null}
               </span>
             )}
           </div>

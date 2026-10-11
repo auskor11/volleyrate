@@ -6,7 +6,8 @@ import { useGames } from './games';
 import { DEFAULT_SETTINGS, buildModel, effectiveRatings, type EngineSettings, type RatingModel } from './engine';
 import type { Ratings } from './ratings';
 
-export type RatedPlayer = Player & { base: Ratings };  // ratings = starting + stats; base = starting
+// ratings = starting + stats; base = starting; prev = ratings before the latest session (`since` = its date)
+export type RatedPlayer = Player & { base: Ratings; prev: Ratings; since?: string };
 
 const settingsRef = () => doc(db, 'config', 'ratingsEngine');
 
@@ -27,8 +28,18 @@ export function useRatedPlayers(override?: EngineSettings): { players: RatedPlay
   const settings = override ?? saved;
   const key = JSON.stringify(settings);
   const model = useMemo(() => (games ? buildModel(games, settings) : null), [games, key]);  // eslint-disable-line react-hooks/exhaustive-deps
+  // the same model without the latest session's games: what ratings were before last Saturday
+  const latest = model?.taggedGames.at(-1)?.date;
+  const before = useMemo(() => (games && latest ? buildModel(games.filter(g => g.date < latest), settings) : null), [games, key, latest]);  // eslint-disable-line react-hooks/exhaustive-deps
+  // only players who played that session get a change (anyone else's would just be recency weights shifting)
+  const played = useMemo(() => new Set((model?.taggedGames ?? []).filter(g => g.date === latest)
+    .flatMap(g => g.rallies.flatMap(r => (r.touches ?? []).map(t => t.p)))), [model, latest]);
   const rated = useMemo(() => (players && model
-    ? players.map(p => ({ ...p, base: p.ratings, ratings: effectiveRatings(p, model) }))
-    : null), [players, model]);
+    ? players.map(p => {
+        const ratings = effectiveRatings(p, model);
+        return { ...p, base: p.ratings, ratings,
+          prev: !played.has(p.id) ? ratings : before ? effectiveRatings(p, before) : p.ratings, ...(latest ? { since: latest } : {}) };
+      })
+    : null), [players, model, before, latest, played]);
   return { players: rated, model, error };
 }
