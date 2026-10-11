@@ -47,20 +47,46 @@ export function Players() {
 export function PlayerDetail() {
   const { id } = useParams();
   const { players, model } = useRatedPlayers();
+  const [as, setAs] = useState<Position | null>(null);  // what-if position (reset when opening another player)
+  useEffect(() => setAs(null), [id]);
   if (!players || !model) return null;
   const p = players.find(x => x.id === id);
   if (!p) return <p className="text-muted">Player not found. <Link to="/players" className="text-ball">Back</Link></p>;
+  const main = p.positions[0] ?? 'OH';
+  const pos = as ?? main;
 
   return (
     <div className="space-y-5">
       <Link to="/players" className="text-sm text-muted">← Players</Link>
-      <PlayerCard player={p} size="lg" />
+      <PlayerCard player={p} size="lg" as={pos} />
+      <section className="rounded-xl border border-line bg-surface p-3">
+        <p className="text-xs text-muted">Overall at each position (tap to see the ratings weighted that way)</p>
+        <div className="mt-2 grid grid-cols-5 gap-1.5">
+          {(Object.keys(POSITIONS) as Position[]).map(k => {
+            const o = overall(p.ratings, k);
+            return (
+              <button key={k} onClick={() => setAs(k === main ? null : k)}
+                className={`rounded-lg border py-1.5 text-center ${pos === k ? 'border-ball bg-ball/20 text-ball' : 'border-line'}`}>
+                <div className="font-display text-xl font-bold">{o ?? 'NR'}</div>
+                <div className="text-[11px] text-muted">{k}{p.positions.includes(k) ? ' ✓' : ''}</div>
+              </button>
+            );
+          })}
+        </div>
+        {pos !== main && (
+          <p className="mt-2 text-xs text-muted">
+            What if {p.name.split(' ')[0]} played {POSITIONS[pos].toLowerCase()}: the same attribute ratings, weighted for that
+            position. Their profile stays {p.positions.join(' / ') || 'unset'}.{' '}
+            <button className="text-ball underline" onClick={() => setAs(null)}>Back to {main}</button>
+          </p>
+        )}
+      </section>
       <Highlights playerId={p.id} name={p.name} />
 
 
       {CATEGORIES.filter(c => c.attrs.length > 1).map(c => {
-        const s = categoryScore(p.ratings, c.key, p.positions[0]);
-        const cw = categoryWeights(c.key, p.positions[0]);
+        const s = categoryScore(p.ratings, c.key, pos);
+        const cw = categoryWeights(c.key, pos);
         return (
           <section key={c.key} className="rounded-xl border border-line bg-surface p-4">
             <div className="mb-1 flex items-baseline justify-between">
@@ -69,7 +95,7 @@ export function PlayerDetail() {
             </div>
             {cw && (
               <p className="mb-1 text-[11px] text-muted">
-                As a {POSITIONS[p.positions[0]].toLowerCase()}: {c.attrs.map(([k, label]) => `${cw[k] ?? 0}% ${label.toLowerCase()}`).join(', ')}
+                As a {POSITIONS[pos].toLowerCase()}: {c.attrs.map(([k, label]) => `${cw[k] ?? 0}% ${label.toLowerCase()}`).join(', ')}
               </p>
             )}
             {c.attrs.map(([k, label]) => <Attr key={k} k={k} label={label} p={p} model={model} />)}

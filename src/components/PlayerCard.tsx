@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom';
 import type { Player } from '../lib/data';
-import { CATEGORIES, categoryScore, overall, tier, type Ratings } from '../lib/ratings';
+import { CATEGORIES, categoryScore, overall, tier, type Position, type Ratings } from '../lib/ratings';
 
-export function PlayerCard({ player, size = 'md' }: { player: Player & { base?: Ratings }; size?: 'md' | 'lg' }) {
-  const pos = player.positions[0] ?? 'OH';
+/** `as`: show the ratings weighted for another position (a what-if; the profile's positions stay as they are). */
+export function PlayerCard({ player, size = 'md', as }: { player: Player & { base?: Ratings }; size?: 'md' | 'lg'; as?: Position }) {
+  const pos = as ?? player.positions[0] ?? 'OH';
+  const whatIf = !!as && as !== player.positions[0];
   const ovr = overall(player.ratings, pos);
   const start = player.base ? overall(player.base, pos) : null;
   const diff = ovr !== null && start !== null ? ovr - start : 0;
@@ -25,7 +27,7 @@ export function PlayerCard({ player, size = 'md' }: { player: Player & { base?: 
             )}
           </div>
           <div className={`mt-1 font-display font-semibold tracking-wide opacity-80 ${big ? 'text-lg' : 'text-sm'}`}>
-            {player.positions.join(' / ')}
+            {whatIf ? `as ${pos}` : player.positions.join(' / ')}
           </div>
         </div>
         {player.number !== null && (
