@@ -28,9 +28,12 @@ export type Team = 'a' | 'b';
 export const TEAMS: Team[] = ['a', 'b'];
 export const other = (t: Team): Team => (t === 'a' ? 'b' : 'a');
 
-/** Roles of positions 1–6 at the start of a set: OH1, S, MB, OH2, OPP, L. */
+/**
+ * Roles of positions 1–6 at the start of a set: OH1, S, MB1, OH2, OPP, MB2. MB2's spot is the one a libero
+ * plays (shown as L while the libero is in), so its role is stored as 'L'.
+ */
 export const START_ROLES: Position[] = ['OH', 'S', 'MB', 'OH', 'OPP', 'L'];
-export const ROLE_NAMES = ['OH1', 'S', 'MB', 'OH2', 'OPP', 'L'];
+export const ROLE_NAMES = ['OH1', 'S', 'MB1', 'OH2', 'OPP', 'MB2'];
 
 /** Spot roles k rotations into a set (k = 0: start of a set). Position 1 has ROLE_NAMES[k], 2 has ROLE_NAMES[k + 1]. */
 export const rolesAt = (k: number): Position[] => START_ROLES.map((_, i) => START_ROLES[(i + k) % 6]);

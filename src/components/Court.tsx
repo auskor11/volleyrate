@@ -5,10 +5,12 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { ROLE_NAMES, TEAMS, placeSpecialists, roleAt, rotate, rotateBack, rotationOf, type CourtState, type Side, type Team } from '../lib/rotation';
 
-/** Role label at spot i, telling the two outside hitters apart (OH1 / OH2). */
+/** Role label at spot i, telling the two outside hitters and the two middles apart (OH1 / OH2, MB1 / MB2). */
 const roleLabel = (s: Side, i: number) => {
   const r = roleAt(s, i), k = rotationOf(s.roles);
-  return r === 'OH' && k >= 0 ? ROLE_NAMES[(i + k) % 6] : r;  // OH1 / OH2 while the spots are in set order
+  if (k < 0 || (r !== 'OH' && r !== 'MB')) return r;  // only while the spots are in set order
+  const name = ROLE_NAMES[(i + k) % 6];
+  return r === 'MB' && !name.startsWith('MB') ? r : name;  // a middle standing in for the libero shows as MB2
 };
 
 // slot keys: "a.pos.0" (team A, position 1), "b.bench.2", "a.bench.end" (drop zone at the end of the bench)

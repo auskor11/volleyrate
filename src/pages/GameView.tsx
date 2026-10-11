@@ -14,12 +14,12 @@ import { avgGrade, computeStats, sameTeamIn, type StatKey } from '../lib/stats';
 import { buildModel, effectiveRatings, type RatingModel } from '../lib/engine';
 import { useEngineSettings } from '../lib/rated';
 import { createBackup } from '../lib/backups';
-import { CATEGORIES, overall, type Position } from '../lib/ratings';
+import { CATEGORIES, overall } from '../lib/ratings';
 import { logHistory, setGameRating, useGames, useHistory } from '../lib/games';
 import { addHighlight, useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
 import {
-  BACK_COURT_PLAYERS, ROLE_NAMES, START_ROLES, TEAMS, assignMiddles, courtFor, guestServes, likelyLibero, sameCourt, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
+  BACK_COURT_PLAYERS, ROLE_NAMES, TEAMS, assignMiddles, courtFor, guestServes, likelyLibero, sameCourt, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
   scoreSheet, server, setupReady, startCourt,
   type CourtSetup, type CourtState, type CourtView, type Team,
 } from '../lib/rotation';
@@ -1551,27 +1551,24 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
             </div>}
             <div className="space-y-1.5 rounded-lg border border-line p-2">
               <p className="text-xs text-muted">
-                Roles at positions 1 and 2. Start of a set is OH1 at 1 and S at 2; if the clip starts mid-set, pick what's
-                there now and the other roles follow.
+                Role at position 1 (position 2 follows). A set starts with OH1 at 1 and S at 2. MB1 is the middle who starts
+                the set at 3; MB2 is the other middle (the libero plays that spot). If the clip starts mid-set, pick what's at 1 now.
               </p>
               {TEAMS.map(t => {
                 const k = Math.max(0, rotationOf(c[t].roles));
-                const opts = [0, 1, 2, 3, 4, 5].filter(j => START_ROLES[j] === START_ROLES[k]);  // OH1 / OH2 share a role
                 const setK = (j: number) => setC(x => tidy({ ...x, [t]: { ...x[t], roles: rolesAt(j) } }));
                 const sel = 'rounded-md border border-line bg-raised px-1.5 py-1 text-ink outline-none';
+                const label = (j: number) => (j === 5 ? 'MB2 / L' : ROLE_NAMES[j]);
                 return (
                   <div key={t} className="flex flex-wrap items-center gap-1.5 text-xs">
                     <span className="w-14 text-muted">Team {t.toUpperCase()}</span>
                     <span>1</span>
-                    <select className={sel} value={START_ROLES[k]} onChange={e => setK(START_ROLES.indexOf(e.target.value as Position))}>
-                      {['OH', 'S', 'MB', 'OPP', 'L'].map(r => <option key={r} value={r}>{r}</option>)}
+                    {/* each role is always followed by the same one, so position 1 fixes the whole rotation */}
+                    <select className={sel} value={k} onChange={e => setK(Number(e.target.value))}>
+                      {[0, 1, 2, 3, 4, 5].map(j => <option key={j} value={j}>{label(j)} (then {label((j + 1) % 6)})</option>)}
                     </select>
                     <span>2</span>
-                    {opts.length > 1
-                      ? <select className={sel} value={k} onChange={e => setK(Number(e.target.value))}>
-                          {opts.map(j => <option key={j} value={j}>{ROLE_NAMES[(j + 1) % 6]}</option>)}
-                        </select>
-                      : <span className="rounded-md bg-raised px-2 py-1">{ROLE_NAMES[(k + 1) % 6]}</span>}
+                    <span className="rounded-md bg-raised px-2 py-1">{label((k + 1) % 6)}</span>
                     {k === 0 && <span className="text-muted">start of a set</span>}
                   </div>
                 );
