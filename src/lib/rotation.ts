@@ -16,7 +16,7 @@
 // each other, so one is always in the back row. The libero plays for whichever middle is in the back
 // row, except that the middle serves: when the back-row middle rotates to position 1 the libero comes
 // off, and as soon as the team loses that serve the libero comes back on for him.
-// A team of six with no subs has no libero: that spot plays middle. If it has a libero-type player
+// A team with no extra middle (six players, or subs who aren't middles) has no libero: that spot plays middle. If it has a libero-type player
 // (Darius) who doesn't play front court, he swaps with the other middle each time he rotates into the
 // front row; if he does play front court, the rotation carries on as usual and he's shown as L/MB.
 // Other subs are made by the reviewer. A rally only stores a court when the reviewer changes it by hand;
@@ -71,7 +71,7 @@ export function roleAt(s: Side, i: number): string {
   if (middle && (s.mid || s.lib)) return p === s.lib ? 'L' : 'MB';
   if (s.roles[i] !== 'L') return s.roles[i];
   if (p && p === s.mb) return 'MB';
-  return s.bench.length ? 'L' : 'MB';         // six players, no subs: no libero
+  return s.mb ? 'L' : 'MB';                   // no extra middle (6 players, or subs who aren't middles): no libero
 }
 
 /** Both teams have all six spots filled, so tagging can start. */

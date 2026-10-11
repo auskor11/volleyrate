@@ -1448,14 +1448,14 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
   const tidy = (x: CourtSetup): CourtSetup => {
     const fix = (sd: CourtSetup['a']) => {
       const { mb, lib, mid: _m, l6, l6front, ...rest } = sd;
-      if (sd.bench.length) {
-        if (!mb || !sd.bench.includes(mb)) return rest;
-        // the libero: chosen, or whoever stands in the back-row middle spot
+      if (mb && (sd.bench.includes(mb) || sd.pos.includes(mb))) {
+        // an extra middle (on the bench, or on court when editing mid-set): the team plays with a libero
+        // (chosen, or whoever stands in the back-row middle spot)
         const l = lib && lib !== mb && (sd.pos.includes(lib) || sd.bench.includes(lib)) ? lib : likelyLibero({ ...sd, mb }) ?? '';
         return { ...rest, mb, ...(l ? { lib: l } : {}) };
       }
       if (!sd.pos.every(Boolean)) return rest;  // decide once all six are placed
-      // six players, no subs: pick the libero-type player (Darius by default) if he's on the team
+      // no extra middle, so no libero: pick the libero-type player (Darius by default) if he's on court
       const pick = l6 !== undefined && (l6 === '' || sd.pos.includes(l6)) ? l6
         : sd.pos.find(p => BACK_COURT_PLAYERS.includes(p)) ?? '';
       return { ...rest, l6: pick, ...(pick && l6front ? { l6front: true } : {}) };
@@ -1464,7 +1464,7 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
   };
   const setMb = (t: Team, id: string | null) => setC(x => tidy({ ...x, [t]: { ...x[t], mb: id ?? undefined } }));
   const setL6 = (t: Team, id: string, front: boolean) => setC(x => tidy({ ...x, [t]: { ...x[t], l6: id, l6front: front } }));
-  const sixes = TEAMS.filter(t => !c[t].bench.length && c[t].pos.every(Boolean));
+  const sixes = TEAMS.filter(t => !c[t].mb && c[t].pos.every(Boolean));  // teams without a libero
   const ok = setupReady(c);
 
   const save = async () => {
@@ -1572,7 +1572,7 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
             </div>
             {sixes.length > 0 && (
               <div className="space-y-1.5 rounded-lg border border-line p-2">
-                <p className="text-xs text-muted">Six players, no subs: no libero, so that spot plays middle (two MBs).</p>
+                <p className="text-xs text-muted">No extra middle marked: no libero, so that spot plays middle (two MBs).</p>
                 {sixes.map(t => (
                   <div key={t} className="space-y-1 text-xs">
                     <div className="flex flex-wrap items-center gap-1.5">
