@@ -1551,8 +1551,8 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
             </div>}
             <div className="space-y-1.5 rounded-lg border border-line p-2">
               <p className="text-xs text-muted">
-                Role at position 1 (position 2 follows). A set starts with OH1 at 1 and S at 2. MB1 is the middle who starts
-                the set at 3; MB2 is the other middle (the libero plays that spot). If the clip starts mid-set, pick what's at 1 now.
+                Role at position 1; the rest follow (shown on the court). A set starts with OH1 at 1. MB1 is the middle who
+                starts the set at 3; MB2 is the other middle (the libero plays that spot). If the clip starts mid-set, pick what's at 1 now.
               </p>
               {TEAMS.map(t => {
                 const k = Math.max(0, rotationOf(c[t].roles));
@@ -1562,13 +1562,11 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
                 return (
                   <div key={t} className="flex flex-wrap items-center gap-1.5 text-xs">
                     <span className="w-14 text-muted">Team {t.toUpperCase()}</span>
-                    <span>1</span>
+                    <span>Position 1</span>
                     {/* each role is always followed by the same one, so position 1 fixes the whole rotation */}
                     <select className={sel} value={k} onChange={e => setK(Number(e.target.value))}>
-                      {[0, 1, 2, 3, 4, 5].map(j => <option key={j} value={j}>{label(j)} (then {label((j + 1) % 6)})</option>)}
+                      {[0, 1, 2, 3, 4, 5].map(j => <option key={j} value={j}>{label(j)}</option>)}
                     </select>
-                    <span>2</span>
-                    <span className="rounded-md bg-raised px-2 py-1">{label((k + 1) % 6)}</span>
                     {k === 0 && <span className="text-muted">start of a set</span>}
                   </div>
                 );
