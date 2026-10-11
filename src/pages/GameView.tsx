@@ -359,9 +359,11 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   // the two teams on court for this rally (worked out from the setup and earlier rallies, or as saved)
   const setup = gameSetup(game);
   const teamsReady = setupReady(setup);
-  const view = mode === 'tag' && rally && teamsReady ? courtFor(setup, list, cur) : null;
   // running score from the tags (live rallies in order); needs the teams to know who won each rally
   const liveRallies = rallies.filter(r => r.st !== 'bad');
+  // the court for the selected rally (Tag and Review); clips marked "not a rally" have none
+  const showCourt = mode === 'tag' || mode === 'review';
+  const view = showCourt && rally && teamsReady && rally.st !== 'bad' ? courtFor(setup, liveRallies, liveRallies.indexOf(rally)) : null;
   const sheet = teamsReady ? scoreSheet(setup, liveRallies) : null;
   const scoreAt = new Map(liveRallies.map((r, i) => [r, sheet?.[i]]));
   const notCounted = (upTo: number) => (sheet ?? []).slice(0, upTo).filter(x => !x.winner).length;
@@ -688,7 +690,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
 
   // Fills the screen: phone = video on top + list scrolling below; wide screen = video left, list right.
   return (
-    <div className={`flex h-[calc(100dvh-11.5rem-env(safe-area-inset-top))] flex-col gap-3 lg:grid lg:gap-5 ${mode === 'tag'
+    <div className={`flex h-[calc(100dvh-11.5rem-env(safe-area-inset-top))] flex-col gap-3 lg:grid lg:gap-5 ${showCourt
       ? 'lg:grid-cols-[minmax(0,1.9fr)_minmax(280px,1fr)_minmax(230px,0.75fr)]' : 'lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]'}`}>
       <div className={`shrink-0 space-y-2 ${mode === 'tag' ? 'lg:flex lg:min-h-0 lg:flex-col lg:gap-2 lg:space-y-0 lg:overflow-y-auto' : 'lg:overflow-y-auto'}`}>
         <div className="flex items-start gap-3">
@@ -834,13 +836,13 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
             : <AddSuggestions gameId={game.id} />
         )}
 
-        {mode === 'tag' && (
+        {showCourt && (
           <details className="shrink-0 rounded-xl border border-line bg-surface px-2 py-1.5 lg:hidden">
             <summary className="cursor-pointer text-xs text-muted">
               Rotation{view ? <>{rally && scoreAt.get(rally) && <> · <b className="text-ink">A {scoreAt.get(rally)!.before.a}–{scoreAt.get(rally)!.before.b} B</b></>}: 🏐 <b className="text-ink">{name(server(view.state))}</b> serves for Team {view.state.serving.toUpperCase()}</> : teamsReady ? '' : ': teams not set up yet'}
             </summary>
             <div className="mx-auto mt-2 max-w-[17rem]">
-              <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} onChange={setCourt} onSetup={() => setTeamsOpen(true)}
+              <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={() => setTeamsOpen(true)}
               score={rally ? scoreAt.get(rally)?.before : undefined} missed={rally ? notCounted(liveRallies.indexOf(rally)) : 0} />
             </div>
           </details>
@@ -872,10 +874,10 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
         {rallyList(listEl, `${mode === 'box' ? 'hidden' : ''} ${mode === 'tag' ? 'lg:hidden' : ''} min-h-40 flex-1`)}
       </div>
 
-      {mode === 'tag' && (
+      {showCourt && (
         <div className="hidden min-h-0 overflow-y-auto lg:block">
           <div className="rounded-xl border border-line bg-surface p-2">
-            <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} onChange={setCourt} onSetup={() => setTeamsOpen(true)}
+            <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={() => setTeamsOpen(true)}
               score={rally ? scoreAt.get(rally)?.before : undefined} missed={rally ? notCounted(liveRallies.indexOf(rally)) : 0} />
           </div>
         </div>
@@ -885,8 +887,8 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
 }
 
 /** The live court for the rally being tagged: checked by the reviewer, fixed by dragging or rotating. */
-function RotationPanel({ view, setup, name, tagged, onChange, onSetup, score, missed }: {
-  view: CourtView | null; setup: CourtSetup | null; name: (id?: string) => string; tagged: boolean;
+function RotationPanel({ view, setup, name, tagged, notRally, onChange, onSetup, score, missed }: {
+  view: CourtView | null; setup: CourtSetup | null; name: (id?: string) => string; tagged: boolean; notRally?: boolean;
   score?: { a: number; b: number }; missed: number;  // score before this rally; earlier rallies left out of it
   onChange: (c: CourtState, what: string, manual?: boolean) => void; onSetup: () => void;
 }) {
@@ -897,7 +899,7 @@ function RotationPanel({ view, setup, name, tagged, onChange, onSetup, score, mi
     </div>
   );
   const shown = view?.state ?? startCourt(setup);
-  const status = !view ? 'Starting positions · pick a rally'
+  const status = notRally ? 'Marked "not a rally": no court' : !view ? 'Starting positions · pick a rally'
     : view.manual ? '✓ Changed by hand'
     : tagged ? '✓ Tagged' : 'Auto: check it matches the video';
   return (
