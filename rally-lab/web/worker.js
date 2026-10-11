@@ -1,5 +1,5 @@
 // Background worker: read MP4 -> hardware-decode video + audio (WebCodecs) -> analyze -> detect rallies.
-// Messages in:  { source: File | { url }, model, opts: { mode?: 'webgl'|'rgba'|'canvas', audio?: 'adts', maxSeconds?, noCandidates?, audioOnly?, params? } }
+// Messages in:  { source: File | { url }, model, opts: { mode?: 'webgl'|'rgba'|'canvas', audio?: 'adts', maxSeconds?, noCandidates?, audioOnly?, params?, serveWindows? } }
 //                audioOnly: skip video, only return contact-sound peaks (fast)
 //                { type: 'pcm', seq, pcm }   (reply to an 'adts' request, see AdtsAudio)
 // Messages out: { type: 'info' | 'progress' | 'done' | 'error' | 'adts', ... }
@@ -255,10 +255,13 @@ async function run({ source, model, opts = {} }) {
 
   const audio = au ? au.finish() : { tf: new Float64Array(0), flux: new Float64Array(0) };
   // opts.params: per-camera overrides of PARAMS (e.g. a camera behind a team); model null = keep every candidate
-  const { rallies, segments } = opts.audioOnly ? { rallies: [], segments: [] } : detectRallies(cand, audio, model, { ...PARAMS, ...(opts.params || {}) });
+  const P = { ...PARAMS, ...(opts.params || {}) };
+  const { rallies, segments } = opts.audioOnly ? { rallies: [], segments: [] } : detectRallies(cand, audio, model, P);
   const peaks = onsetPeaks(audio);
+  // serve signature of each rally (given windows, else the detected rallies): tells which end served
+  const serves = opts.audioOnly ? [] : serveSignatures(cand, opts.serveWindows || rallies, P);
   post('done', {
-    rallies, segments, peaks, frames, candidates: opts.noCandidates ? undefined : cand, mode, colour, timing,
+    rallies, segments, peaks, serves, frames, candidates: opts.noCandidates ? undefined : cand, mode, colour, timing,
     elapsed: (performance.now() - t0) / 1000, duration, processed: Math.min(duration, opts.maxSeconds || duration),
     userAgent: navigator.userAgent,
   });

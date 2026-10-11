@@ -8,6 +8,7 @@ export interface DetectorResult {
   rallies: [number, number][];
   segments: Segment[];
   peaks: number[];
+  serves: (number[] | null)[];  // per rally (or per serveWindows window): [ball size, height] at the serve
   duration: number;
   elapsed: number;
   userAgent: string;
@@ -22,6 +23,7 @@ export function runDetector(
   audioOnly = false,
   kind: CameraKind = 'side',
   extra: Record<string, number> = {},  // per-video settings, e.g. the back camera's net line
+  serveWindows?: [number, number][],   // rallies to measure serves in (video time); default: the detected ones
 ): { result: Promise<DetectorResult>; cancel: () => void } {
   const worker = new Worker('/detector/worker.js');
   let adtsQueue = Promise.resolve();
@@ -37,7 +39,7 @@ export function runDetector(
         else if (m.type === 'error') reject(new Error(m.message));
         else if (m.type === 'done') resolve(m);
       };
-      worker.postMessage({ source: file, model, opts: { noCandidates: true, audioOnly, params: { ...CAMERA_KINDS[kind].params, ...extra } } });
+      worker.postMessage({ source: file, model, opts: { noCandidates: true, audioOnly, params: { ...CAMERA_KINDS[kind].params, ...extra }, serveWindows } });
     });
   })().finally(() => worker.terminate());
   return { result, cancel: () => worker.terminate() };

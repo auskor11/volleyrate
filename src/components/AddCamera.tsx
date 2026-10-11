@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CameraFields, defaultCamera, type CameraChoice } from './CameraFields';
 import { NetLine, lastNetLine, netParams } from './NetLine';
-import { autoSync, type Angle } from '../lib/cameras';
+import { autoSync, packServes, type Angle } from '../lib/cameras';
 import { detectorSupported, runDetector, type DetectorProgress } from '../lib/detector';
 import { fmtTime, logHistory, updateGame, type Game } from '../lib/games';
 import { parseYouTubeId } from '../lib/youtube';
@@ -57,6 +57,8 @@ export function AddCamera({ game, onClose }: { game: Game; onClose: () => void }
         const s = mainPeaks.length ? autoSync(mainPeaks, r.peaks) : null;
         if (s) { angle.offset = s.offset; angle.sync = { matched: s.matched, total: s.total }; note = ` · lined up by sound (${s.offset >= 0 ? '+' : ''}${s.offset.toFixed(2)} s)`; }
         else note = ' · couldn\'t line it up by sound: adjust it by eye';
+        // serve signatures of the rallies this camera found, on the game's timeline (back cameras)
+        if (detect && camera.kind === 'back' && r.serves?.length) angle.serves = packServes(r.rallies.map(x => x[0] - angle.offset), r.serves);
       }
       setStep({ what: 'Saving', p: null });
       // a main-video sound read for lining up is kept too (it also powers touch suggestions)

@@ -174,6 +174,7 @@ export interface Game {
   cameraName?: string;
   behind?: Team;
   net?: number;           // back camera: the top of the net in the picture (fraction of height)
+  serves?: number[];      // back camera: serve signatures per rally (see cameras.ts serveGuesses)
   angles?: Angle[];
 }
 
@@ -229,7 +230,7 @@ export async function saveRallies(id: string, rallies: Rally[]) {
   await updateDoc(doc(db, 'games', id), { rallies: sorted, updatedAt: serverTimestamp() });
 }
 
-export async function updateGame(id: string, patch: Partial<Pick<Game, 'title' | 'date' | 'reviewed' | 'peaks' | 'segments' | 'court' | 'angles' | 'camera' | 'cameraName' | 'behind' | 'net'>>) {
+export async function updateGame(id: string, patch: Partial<Pick<Game, 'title' | 'date' | 'reviewed' | 'peaks' | 'segments' | 'court' | 'angles' | 'camera' | 'cameraName' | 'behind' | 'net' | 'serves'>>) {
   await updateDoc(doc(db, 'games', id), patch);
 }
 

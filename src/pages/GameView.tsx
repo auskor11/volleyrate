@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { usePlayers, type Player } from '../lib/data';
@@ -7,7 +7,7 @@ import {
   updateGame, useGame, type AttackType, type Game, type SameTeam, type Grade, type Rally, type RallyEnd, type Skill, type Touch,
 } from '../lib/games';
 import { createPlayer, withOffset, type YTPlayer } from '../lib/youtube';
-import { cameraLabel, cameras } from '../lib/cameras';
+import { cameraLabel, cameras, serveGuesses } from '../lib/cameras';
 import { AddCamera } from '../components/AddCamera';
 import { RefreshDetector } from '../components/RefreshDetector';
 import { avgGrade, computeStats, sameTeamIn, type StatKey } from '../lib/stats';
@@ -566,6 +566,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
   const liveIdx = rally ? liveRallies.indexOf(rally) : -1;
   const prevLive = liveIdx > 0 ? liveRallies[liveIdx - 1] : null;
   const prevServing = view && prevLive ? courtFor(setup!, liveRallies, liveIdx - 1).state.serving : null;
+  const guessServe = useMemo(() => serveGuesses(game), [game]);
   const serveOptions = view && prevLive && prevServing && !view.saved
     ? (() => {
         const opts = ([prevServing, prevServing === 'a' ? 'b' : 'a'] as Team[]).map(w => {
@@ -573,7 +574,10 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
           const sp = server(v.derived);
           return { won: w, p: isGuest(sp) ? `guest-${v.derived.serving}` : sp, again: w === prevServing };
         });
-        return opts[0].p === opts[1].p ? [opts[0]] : opts;  // the previous rally's tags already decide it
+        if (opts[0].p === opts[1].p) return [opts[0]];  // the previous rally's tags already decide it
+        // a camera behind a team can tell which end served: put that choice first (Y)
+        const g = rally ? guessServe(rally.s) : null;
+        return g?.sure && opts[1].won === g.team ? [{ ...opts[1], cam: true }, opts[0]] : g?.sure ? [{ ...opts[0], cam: true }, opts[1]] : opts;
       })()
     : null;
   const good = (p = reviewServer, court?: CourtState, won?: Team) => {
@@ -769,9 +773,9 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
             </button>
           ))}
           {!samplePlayers && <button onClick={() => setAddingCam(true)} className="rounded-md border border-dashed border-line px-2.5 py-1 text-muted">+ Add camera</button>}
-          {!samplePlayers && game.reviewed && (
+          {!samplePlayers && (
             <button onClick={() => setRefreshing(true)} className="rounded-md border border-dashed border-line px-2.5 py-1 text-muted"
-              title={`Re-run the ${cam.name} camera's rally detector to refresh its training examples (rallies stay as reviewed)`}>⟳ Detector data</button>
+              title={`Re-run the ${cam.name} camera's rally detector: refreshes its training examples and (back cameras) which end each serve came from. Rallies stay as they are.`}>⟳ Detector data</button>
           )}
           {cam.id !== 'main' && (
             <span className="ml-auto flex items-center gap-1 text-muted">
@@ -861,7 +865,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
                   return (
                     <button key={o.won} onClick={() => good(o.p, undefined, serveOptions.length > 1 ? o.won : undefined)}
                       className={`${btn} ${chosen ? 'border-good text-good' : 'text-ink'}`}>
-                      ✓ {name(o.p)} {serveOptions.length > 1 ? (o.again ? 'again' : '· side-out') : 'serves'}
+                      {'cam' in o && o.cam ? '📷 ' : '✓ '}{name(o.p)} {serveOptions.length > 1 ? (o.again ? 'again' : '· side-out') : 'serves'}
                       <span className="ml-1 hidden text-[10px] opacity-60 lg:inline">{i === 0 ? 'Y' : 'U'}</span>
                     </button>
                   );
