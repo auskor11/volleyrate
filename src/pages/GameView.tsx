@@ -573,7 +573,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
         const opts = ([prevServing, prevServing === 'a' ? 'b' : 'a'] as Team[]).map(w => {
           const v = courtFor(setup!, liveRallies.map(r => (r === prevLive ? { ...r, won: w } : r)), liveIdx);
           const sp = server(v.derived);
-          return { won: w, p: isGuest(sp) ? `guest-${v.derived.serving}` : sp, again: w === prevServing };
+          return { won: w, p: isGuest(sp) ? `guest-${v.derived.serving}` : sp, again: w === prevServing, court: v.derived };
         });
         if (opts[0].p === opts[1].p) return [opts[0]];  // the previous rally's tags already decide it
         // a camera behind a team can tell which end served: put that choice first (Y)
@@ -595,13 +595,20 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
       [`rev:${r0.as ?? r0.s}:st`, `${label(r0)}: marked good · ${name(p)} served${court ? ' (court corrected)' : ''}${won ? ` · Team ${won.toUpperCase()} won the rally before` : ''}`]);
     if (cur < list.length - 1) setTimeout(() => go(cur + 1), 150);
   };
-  // the reviewer says someone else served: line the court up with them (from this rally on), then confirm
+  // the reviewer picks who served from the list. Their team decides who won the rally before (same team =
+  // they won it, the other team = side-out, rotation included), exactly like the two buttons; only a player
+  // the rotation doesn't expect (a missed rally, a sub) also needs the court lined up with them by hand.
   const chooseServer = (p: string) => {
     setPickServer(false);
     if (!view) return;
+    const t = serverTeam(p);
+    const opt = t && serveOptions ? serveOptions.find(o => o.won === t) ?? null : null;
+    const won = opt && serveOptions!.length > 1 ? opt.won : undefined;
+    if (opt && (opt.p === p || (isGuest(p) && isGuest(opt.p)))) { good(opt.p, undefined, won); return; }
+    const base = opt?.court ?? view.state;
     const g = guestTeam(p);
-    const c = g ? guestServes(view.state, g) : makeServer(view.state, p);
-    good(p, sameCourt(c, view.state) ? undefined : c);
+    const c = g ? guestServes(base, g) : makeServer(base, p);
+    good(p, sameCourt(c, view.state) ? undefined : c, won);
   };
   const setStart = () => { const t = now(); if (rally && t < rally.e) edit({ s: t, st: rally.st === 'auto' ? 'ok' : rally.st }, `start: changed start to ${fmtTime(t)}`); };
   const setEnd = () => { const t = now(); if (rally && t > rally.s) edit({ e: t, st: rally.st === 'auto' ? 'ok' : rally.st }, `end: changed end to ${fmtTime(t)}`); };

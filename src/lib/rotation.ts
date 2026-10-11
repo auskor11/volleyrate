@@ -206,9 +206,13 @@ export const startCourt = (c: CourtSetup): CourtState => {
   return { ...n, a: side('a'), b: side('b') };
 };
 
-/** A guest of team t serves: that team serves, rotated until a guest's spot is at position 1. */
+/**
+ * A guest of team t serves: that team serves, rotated until a guest's spot is at position 1. Winning the
+ * serve back always means a rotation, so a team that wasn't serving rotates once before looking (otherwise
+ * a guest already at position 1, e.g. a guest OH, would serve when the guest setter should).
+ */
 export function guestServes(c: CourtState, t: Team): CourtState {
-  let s = c[t];
+  let s = c.serving === t ? c[t] : rotate(c[t]);
   for (let k = 0; k < 6 && !isGuest(s.pos[0]); k++) s = rotate(s);
   return isGuest(s.pos[0]) ? { ...c, [t]: s, serving: t } : c;
 }
