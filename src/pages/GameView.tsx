@@ -19,7 +19,7 @@ import { logHistory, setGameRating, useGames, useHistory } from '../lib/games';
 import { addHighlight, useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
 import {
-  BACK_COURT_PLAYERS, ROLE_NAMES, START_ROLES, TEAMS, courtFor, guestServes, sameCourt, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
+  BACK_COURT_PLAYERS, ROLE_NAMES, START_ROLES, TEAMS, courtFor, guestServes, likelyLibero, sameCourt, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
   scoreSheet, server, setupReady, startCourt,
   type CourtSetup, type CourtState, type CourtView, type Team,
 } from '../lib/rotation';
@@ -1439,9 +1439,8 @@ function TeamsDialog({ game, players, onClose, video }: {
       const { mb, lib, mid: _m, l6, l6front, ...rest } = sd;
       if (sd.bench.length) {
         if (!mb || !sd.bench.includes(mb)) return rest;
-        // the libero: chosen, or whoever stands in the L spot
-        const iL = sd.roles.indexOf('L');
-        const l = lib && lib !== mb && (sd.pos.includes(lib) || sd.bench.includes(lib)) ? lib : sd.pos[iL] && sd.pos[iL] !== mb ? sd.pos[iL] : '';
+        // the libero: chosen, or whoever stands in the back-row middle spot
+        const l = lib && lib !== mb && (sd.pos.includes(lib) || sd.bench.includes(lib)) ? lib : likelyLibero({ ...sd, mb }) ?? '';
         return { ...rest, mb, ...(l ? { lib: l } : {}) };
       }
       if (!sd.pos.every(Boolean)) return rest;  // decide once all six are placed

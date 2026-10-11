@@ -161,6 +161,18 @@ function liberoRule(s: Side, serving: boolean): Side {
 }
 
 /**
+ * Who is probably the libero: whoever stands in the back-row middle spot (a libero can't play the front
+ * row, so in rotations where the libero's spot is at the front, the middle plays it and the libero stands
+ * in the other middle spot, at the back).
+ */
+export function likelyLibero(s: Side): string | undefined {
+  const spots = [s.roles.indexOf('MB'), s.roles.indexOf('L')].filter(i => i >= 0);
+  const back = spots.find(i => i === 4 || i === 5) ?? spots.find(i => i === 0);
+  const p = back === undefined ? undefined : s.pos[back];
+  return p && p !== s.mb ? p : undefined;
+}
+
+/**
  * At the first rally: work out which middle owns which middle spot. The setup has the libero and one
  * middle in the two middle spots (the other middle on the bench), or both middles on court.
  */
@@ -169,7 +181,7 @@ function withMiddles(s: Side): Side {
   if (!s.mb) return base;
   const iM = s.roles.indexOf('MB'), iL = s.roles.indexOf('L');
   if (iM < 0 || iL < 0) return base;
-  const lib = s.lib ?? (s.pos[iL] !== s.mb ? s.pos[iL] : undefined);
+  const lib = s.lib ?? likelyLibero(s);
   if (!lib) return base;
   const oM = s.pos[iM], oL = s.pos[iL];
   const mid: [string, string] | null =
