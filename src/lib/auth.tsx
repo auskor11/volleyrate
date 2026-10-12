@@ -18,6 +18,8 @@ interface AuthState {
 }
 
 const Ctx = createContext<AuthState>(null!);
+/** Dev preview only: render signed-in screens with a stand-in user. */
+export const AuthPreviewProvider = Ctx.Provider;
 export const useAuth = () => useContext(Ctx);
 
 // Home-screen apps and phones handle popups badly; use a full-page redirect there.

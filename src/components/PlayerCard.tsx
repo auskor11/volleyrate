@@ -18,13 +18,13 @@ export function PlayerCard({ player, size = 'md', as }: { player: Player & { bas
       to={`/players/${player.id}`}
       className={`tier-${tier(ovr)} relative block overflow-hidden rounded-2xl shadow-lg shadow-black/40 ${big ? 'p-5' : 'p-3.5'} transition active:scale-[0.98]`}
     >
-      <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full border-[10px] border-current opacity-[0.08]" />
+      <div className="card-deco pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full border-[10px] border-current opacity-[0.08]" />
       <div className="flex items-start justify-between">
         <div>
-          <div className={`flex items-start gap-1 font-display font-bold leading-none ${big ? 'text-6xl' : 'text-4xl'}`}>
+          <div className={`card-ovr flex items-start gap-1 font-display font-bold leading-none ${big ? 'text-6xl' : 'text-4xl'}`}>
             {ovr ?? 'NR'}
             {diff !== 0 && (
-              <span title={sinceLabel ? `Change from the ${sinceLabel} session` : 'Change from starting ratings'} className={`rounded px-1 py-0.5 font-sans font-bold leading-none ${big ? 'text-sm' : 'text-[10px]'} ${diff > 0 ? 'bg-green-900/80 text-green-200' : 'bg-red-900/80 text-red-200'}`}>
+              <span title={sinceLabel ? `Change from the ${sinceLabel} session` : 'Change from starting ratings'} className={`card-diff ${diff > 0 ? 'up' : 'down'} rounded px-1 py-0.5 font-sans font-bold leading-none ${big ? 'text-sm' : 'text-[10px]'} ${diff > 0 ? 'bg-green-900/80 text-green-200' : 'bg-red-900/80 text-red-200'}`}>
                 {diff > 0 ? '▲' : '▼'}{Math.abs(diff)}{big && sinceLabel ? <span className="font-normal opacity-70"> {sinceLabel}</span> : null}
               </span>
             )}
@@ -34,7 +34,7 @@ export function PlayerCard({ player, size = 'md', as }: { player: Player & { bas
           </div>
         </div>
         {player.number !== null && (
-          <div className={`font-display font-bold opacity-30 ${big ? 'text-5xl' : 'text-3xl'}`}>#{player.number}</div>
+          <div className={`card-num font-display font-bold opacity-30 ${big ? 'text-5xl' : 'text-3xl'}`}>#{player.number}</div>
         )}
       </div>
       <div className={`mt-3 truncate font-display font-bold uppercase tracking-wide ${big ? 'text-3xl' : 'text-lg'}`}>

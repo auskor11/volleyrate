@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { NetLine, netParams } from '../components/NetLine';
 // Development-only: renders cards and a detail view with sample data (no sign-in needed).
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Layout } from '../components/Layout';
+import { AuthPreviewProvider } from '../lib/auth';
 import { GamePlayer } from './GameView';
 import { GamesList } from './Games';
 import { Highlights } from './Players';
@@ -88,4 +90,29 @@ export function DevNetLine() {
   const [v, setV] = useState(0.55);
   useEffect(() => { fetch('/__netline_sample.mp4').then(r => r.blob()).then(b => setFile(new File([b], 'sample.mp4', { type: 'video/mp4' }))); }, []);
   return <div className="mx-auto max-w-lg p-4">{file && <NetLine file={file} value={v} onChange={setV} />}<p className="mt-2 text-sm">value {v.toFixed(3)} → y_max {netParams(v).y_max}</p></div>;
+}
+
+// The app shell (header, nav, account menu with the look switch) around the sample cards.
+export function DevShell() {
+  const auth = { user: { displayName: 'Sample Admin', email: 'admin@example.com', photoURL: null }, member: null, loading: false, error: null,
+    isAdmin: true, signIn: async () => {}, signOut: async () => {} } as unknown as Parameters<typeof AuthPreviewProvider>[0]['value'];
+  return (
+    <AuthPreviewProvider value={auth}>
+      <MemoryRouter>
+        <Routes><Route element={<Layout />}><Route path="*" element={<Cards />} /></Route></Routes>
+      </MemoryRouter>
+    </AuthPreviewProvider>
+  );
+}
+function Cards() {
+  return (
+    <div className="space-y-6">
+      <h1 className="font-display text-3xl font-bold">Hi Sample</h1>
+      <section>
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">Your card</h2>
+        <PlayerCard player={{ ...sample[0], prev: r(81), since: '2026-10-10' }} size="lg" />
+      </section>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{sample.map(s => <PlayerCard key={s.id} player={s} />)}</div>
+    </div>
+  );
 }
