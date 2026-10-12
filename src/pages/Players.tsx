@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../lib/auth';
+import { useTheme } from '../lib/theme';
+import { PhotoEditor } from '../components/Avatar';
 import { removeHighlight, useHighlights, type Highlight } from '../lib/highlights';
 import { createPlayer, type YTPlayer } from '../lib/youtube';
 import { Link, useParams } from 'react-router-dom';
@@ -14,6 +16,7 @@ import { CATEGORIES, POSITIONS, categoryScore, categoryWeights, overall, type Po
 export function Players() {
   const { players, error } = useRatedPlayers();
   const [pos, setPos] = useState<Position | 'ALL'>('ALL');
+  const clean = useTheme() === 'clean';
   if (error) return <p className="text-bad">{error}</p>;
   if (!players) return null;
   const list = players
@@ -35,8 +38,8 @@ export function Players() {
           </button>
         ))}
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {list.map(({ p }) => <PlayerCard key={p.id} player={p} />)}
+      <div className={`mt-4 grid gap-3 ${clean ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}>
+        {list.map(({ p }) => <PlayerCard key={p.id} player={p} as={pos !== 'ALL' && clean ? pos : undefined} />)}
       </div>
       {pos !== 'ALL' && (
         <p className="mt-3 text-xs text-muted">Overalls shown as a {POSITIONS[pos]}.</p>
@@ -49,6 +52,8 @@ export function PlayerDetail() {
   const { id } = useParams();
   const { players, model } = useRatedPlayers();
   const [as, setAs] = useState<Position | null>(null);  // what-if position (reset when opening another player)
+  const [photo, setPhoto] = useState(false);
+  const isMember = !!useAuth()?.member;
   useEffect(() => setAs(null), [id]);
   if (!players || !model) return null;
   const p = players.find(x => x.id === id);
@@ -60,6 +65,13 @@ export function PlayerDetail() {
     <div className="space-y-5">
       <Link to="/players" className="text-sm text-muted">← Players</Link>
       <PlayerCard player={p} size="lg" as={pos} />
+      {isMember && (
+        <div className="-mt-2 flex items-center justify-center gap-2 text-xs text-muted">
+          <button className="rounded-md border border-line px-2.5 py-1 text-ink" onClick={() => setPhoto(true)}>📷 {p.photo ? 'Change photo' : 'Add photo'}</button>
+          {p.photo && p.photoBy && <span>photo by {p.photoBy}</span>}
+        </div>
+      )}
+      {photo && <PhotoEditor player={p} onClose={() => setPhoto(false)} />}
       <section className="rounded-xl border border-line bg-surface p-3">
         <p className="text-xs text-muted">Overall at each position (tap to see the ratings weighted that way)</p>
         <div className="mt-2 grid grid-cols-5 gap-1.5">

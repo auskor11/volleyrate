@@ -3,6 +3,7 @@ import { NetLine, netParams } from '../components/NetLine';
 // Development-only: renders cards and a detail view with sample data (no sign-in needed).
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Layout } from '../components/Layout';
+import { PhotoEditor } from '../components/Avatar';
 import { AuthPreviewProvider } from '../lib/auth';
 import { GamePlayer } from './GameView';
 import { GamesList } from './Games';
@@ -104,15 +105,30 @@ export function DevShell() {
     </AuthPreviewProvider>
   );
 }
+// a stand-in face (a drawn smiley) so the preview shows a photo
+const fakeFace = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d')!;
+  x.fillStyle = '#5b7fa8'; x.fillRect(0, 0, 256, 256);
+  x.fillStyle = '#e8c29b'; x.beginPath(); x.arc(128, 120, 70, 0, 7); x.fill();
+  x.fillStyle = '#2b2b2b'; x.beginPath(); x.arc(103, 108, 8, 0, 7); x.arc(153, 108, 8, 0, 7); x.fill();
+  x.strokeStyle = '#2b2b2b'; x.lineWidth = 6; x.beginPath(); x.arc(128, 135, 30, 0.2, Math.PI - 0.2); x.stroke();
+  return c.toDataURL('image/jpeg', 0.8);
+})();
+
 function Cards() {
+  const [edit, setEdit] = useState(false);
+  const me = { ...sample[0], photo: fakeFace, prev: r(81), since: '2026-10-10' };
   return (
     <div className="space-y-6">
+      <button className="rounded border border-line px-2 py-1 text-xs" onClick={() => setEdit(true)}>Open photo editor</button>
+      {edit && <PhotoEditor player={me} onClose={() => setEdit(false)} />}
       <h1 className="font-display text-3xl font-bold">Hi Sample</h1>
       <section>
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">Your card</h2>
-        <PlayerCard player={{ ...sample[0], prev: r(81), since: '2026-10-10' }} size="lg" />
+        <PlayerCard player={me} size="lg" />
       </section>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{sample.map(s => <PlayerCard key={s.id} player={s} />)}</div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{[me, ...sample.slice(1)].map(s => <PlayerCard key={s.id} player={s} />)}</div>
     </div>
   );
 }

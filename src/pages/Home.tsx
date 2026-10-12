@@ -5,11 +5,14 @@ import { usePlayers } from '../lib/data';
 import { useRatedPlayers } from '../lib/rated';
 import { useGames } from '../lib/games';
 import { LEADER_STATS, computeStats } from '../lib/stats';
-import { overall } from '../lib/ratings';
+import { overall, tier } from '../lib/ratings';
+import { useTheme } from '../lib/theme';
+import { Avatar } from '../components/Avatar';
 
 export function Home() {
   const { member, user } = useAuth();
   const { players } = useRatedPlayers();
+  const clean = useTheme() === 'clean';
   const me = players?.find(p => p.id === member?.playerId);
   const ranked = (players ?? [])
     .map(p => ({ p, ovr: overall(p.ratings, p.positions[0] ?? 'OH') }))
@@ -44,6 +47,7 @@ export function Home() {
               <li key={p.id}>
                 <Link to={`/players/${p.id}`} className="flex items-center gap-3 px-4 py-3">
                   <span className="w-5 font-display text-muted">{i + 1}</span>
+                  {clean && <Avatar name={p.name} photo={p.photo} tier={tier(ovr)} size={32} />}
                   <span className="flex-1 font-medium">{p.name}</span>
                   <span className="text-xs text-muted">{p.positions[0]}</span>
                   <span className="w-8 text-right font-display text-xl font-bold">{ovr}</span>
@@ -67,6 +71,7 @@ export function Home() {
 }
 
 function Leaders() {
+  const clean = useTheme() === 'clean';
   const games = useGames();
   const { players } = usePlayers();
   if (!games || !players) return null;
@@ -84,8 +89,9 @@ function Leaders() {
             <div key={k} className="rounded-xl border border-line bg-surface p-3">
               <div className="text-xs text-muted">{label}</div>
               {p ? (
-                <Link to={`/players/${p.id}`} className="mt-0.5 flex items-baseline justify-between">
-                  <span className="truncate font-semibold">{p.name}</span>
+                <Link to={`/players/${p.id}`} className={`mt-0.5 flex justify-between gap-2 ${clean ? 'items-center' : 'items-baseline'}`}>
+                  {clean && <Avatar name={p.name} photo={p.photo} size={26} ring={0} />}
+                  <span className="min-w-0 flex-1 truncate font-semibold">{p.name}</span>
                   <span className="font-display text-xl font-bold text-ball">{top.n}</span>
                 </Link>
               ) : <div className="mt-0.5 text-sm text-muted">–</div>}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, deleteField, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Position, Ratings } from './ratings';
 
@@ -9,6 +9,8 @@ export interface Player {
   number: number | null;
   positions: Position[];  // primary first
   ratings: Ratings;
+  photo?: string;         // face photo: a small square image as a data URL (anyone on the team can change it)
+  photoBy?: string;       // first name of whoever set it
 }
 
 export interface Member {
@@ -45,6 +47,11 @@ export async function saveRatings(playerId: string, ratings: Ratings) {
 /** A player's own positions (primary first): the only profile field players can change themselves. */
 export async function savePositions(playerId: string, positions: Position[]) {
   await updateDoc(doc(db, 'players', playerId), { positions });
+}
+
+/** Set or remove (null) a player's face photo. Anyone on the team can change anyone's. */
+export async function savePhoto(playerId: string, photo: string | null, by: string) {
+  await updateDoc(doc(db, 'players', playerId), photo ? { photo, photoBy: by } : { photo: deleteField(), photoBy: deleteField() });
 }
 
 export async function savePlayer(p: Omit<Player, 'ratings'>) {
