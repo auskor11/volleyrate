@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache } from 'firebase/firestore';
 
 // Web config is public by design; access is controlled by firestore.rules.
 const app = initializeApp({
@@ -15,4 +15,11 @@ const app = initializeApp({
 });
 
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Keep a copy of the data on the device: reopening the app shows it straight away, and only what changed is
+// downloaded (instead of every game, every time). Browsers that can't store it (e.g. some private windows)
+// fall back to memory.
+function cache() {
+  try { return persistentLocalCache({ tabManager: persistentMultipleTabManager() }); }
+  catch { return memoryLocalCache(); }
+}
+export const db = initializeFirestore(app, { localCache: cache() });
