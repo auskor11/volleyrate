@@ -39,3 +39,6 @@ rally-lab/review/
 __pycache__/
 *.pyc
 public/__netline_sample.mp4
+
+# ratings before/after check: a copy of the team's game data
+.ratings-check/

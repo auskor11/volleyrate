@@ -114,6 +114,13 @@ private.example/     the formats of the files in private/
 2. Add it to both lists.
 3. Deploy the rules and the app.
 
+## Checking rating changes
+
+Before changing how ratings or stats are calculated, run `npm run ratings:snapshot`; after the change, run
+`npm run ratings:diff`. The diff recomputes everyone's overall, attributes and stat counts from the same saved
+data, so every difference it lists comes from the code change. The snapshot (in `.ratings-check/`, not in git)
+needs `npx firebase login` and only reads the database.
+
 ## Private files
 
 `private/` is git-ignored and never deployed. It holds teammates' emails and the poll results.
