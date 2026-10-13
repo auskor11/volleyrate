@@ -749,7 +749,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
 
   // Fills the screen: phone = video on top + list scrolling below; wide screen = video left, list right.
   return (
-    <div className={`flex h-[calc(100dvh-11.5rem-env(safe-area-inset-top))] flex-col gap-3 lg:grid lg:gap-5 ${showCourt
+    <div className={`game-fill flex h-[calc(100dvh-11.5rem-env(safe-area-inset-top))] flex-col gap-3 lg:grid lg:gap-5 ${showCourt
       ? 'lg:grid-cols-[minmax(0,1.9fr)_minmax(280px,1fr)_minmax(230px,0.75fr)]' : 'lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]'}`}>
       <div className={`shrink-0 space-y-2 ${mode === 'tag' ? 'lg:flex lg:min-h-0 lg:flex-col lg:gap-2 lg:space-y-0 lg:overflow-y-auto' : 'lg:overflow-y-auto'}`}>
         <div className="flex items-start gap-3">
@@ -815,6 +815,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
           <span className="flex items-center gap-2 font-medium">
             {rally ? <>Rally {cur + 1} · {fmtTime(rally.s)}–{fmtTime(rally.e)}
               <button onClick={() => setHighlighting(true)} className="rounded-md border border-ball/50 px-2 py-0.5 text-xs font-semibold text-ball">★ Highlight</button>
+              <ShareRally game={game} rally={rally} n={cur + 1} />
             </> : <span className="text-muted">Tap a rally to play it</span>}
           </span>
           <span className="text-xs text-muted">
@@ -1671,5 +1672,26 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Share a link that opens this game and plays this rally (for anyone on the team: they still sign in). */
+function ShareRally({ game, rally, n }: { game: Game; rally: Rally; n: number }) {
+  const [copied, setCopied] = useState(false);
+  const share = async () => {
+    const url = `${location.origin}/games/${game.id}?t=${rally.s}&r=${rally.s}`;
+    const title = `${game.title} · rally ${n}`;
+    // phones: the share sheet (WhatsApp, Telegram, …); computers: copy the link
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+      try { await navigator.share({ title, text: title, url }); return; } catch (e) { if ((e as Error).name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(url); } catch { prompt('Copy this link', url); return; }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button onClick={share} className="rounded-md border border-line px-2 py-0.5 text-xs font-semibold text-ink">
+      {copied ? '✓ Link copied' : '↗ Share'}
+    </button>
   );
 }

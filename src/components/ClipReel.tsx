@@ -1,0 +1,97 @@
+// A video player with a list of clips (whole rallies): tap one to watch it, or play them all back to back.
+// Used for a player's highlights and for a stat's clips (e.g. all of someone's assists).
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPlayer, type YTPlayer } from '../lib/youtube';
+import { fmtTime } from '../lib/games';
+
+export interface ReelClip {
+  key: string;
+  youtubeId: string;
+  s: number;            // clip start / end (video seconds)
+  e: number;
+  label: string;        // first line in the list
+  sub: string;          // second line (game, date, …)
+  extra?: ReactNode;    // buttons at the end of the row
+}
+
+export function ClipReel({ clips, autoStart = false }: { clips: ReelClip[]; autoStart?: boolean }) {
+  const [cur, setCur] = useState<number | null>(null);
+  const [reel, setReel] = useState(false);
+  const el = useRef<HTMLDivElement>(null);
+  const yt = useRef<YTPlayer | null>(null);
+  const loadedAt = useRef(0);   // when the current clip was loaded (ignore stale "ended" events just after)
+  const state = useRef({ clips, cur, reel });
+  state.current = { clips, cur, reel };
+
+  function play(i: number) {
+    const c = state.current.clips[i];
+    if (!c || !yt.current) return;
+    setCur(i);
+    state.current.cur = i;
+    loadedAt.current = Date.now();
+    yt.current.loadVideoById({ videoId: c.youtubeId, startSeconds: Math.max(0, c.s - 0.5), endSeconds: c.e + 0.5 });
+  }
+  const startReel = () => { setReel(true); state.current.reel = true; play(0); };
+  const stopReel = () => { setReel(false); state.current.reel = false; };
+  // move to the next clip in the reel (once per clip), or finish
+  function next() {
+    const { clips, cur, reel } = state.current;
+    if (!reel || cur === null || Date.now() - loadedAt.current < 1500) return;
+    if (cur < clips.length - 1) play(cur + 1);
+    else stopReel();
+  }
+
+  // Create the player straight away, so a tap can start playback directly
+  // (browsers, especially iPhones, only allow video to start straight from a tap).
+  const first = clips[0];
+  useEffect(() => {
+    if (!first || !el.current || yt.current) return;
+    let dead = false;
+    const host = document.createElement('div');
+    el.current.replaceChildren(host);
+    createPlayer(host, first.youtubeId, st => { if (st === 0) next(); })  // 0 = ended at endSeconds
+      .then(p => { if (dead) p.destroy(); else { yt.current = p; if (autoStart) startReel(); } });
+    // backup: YouTube sometimes pauses at the end instead of reporting "ended"
+    const watch = setInterval(() => {
+      const { clips, cur, reel } = state.current;
+      const c = cur !== null ? clips[cur] : undefined;
+      if (reel && c && yt.current && yt.current.getCurrentTime() >= c.e + 0.4) next();
+    }, 300);
+    return () => { dead = true; clearInterval(watch); yt.current?.destroy(); yt.current = null; };
+  }, [first?.youtubeId]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // keep the playing clip visible in the list
+  const listEl = useRef<HTMLUListElement>(null);
+  useEffect(() => { listEl.current?.querySelector(`[data-i="${cur}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [cur]);
+
+  const c = cur !== null ? clips[cur] : undefined;
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted">{c ? `${reel ? `${cur! + 1} of ${clips.length} · ` : ''}${c.sub}` : `${clips.length} clip${clips.length === 1 ? '' : 's'}`}</span>
+        {reel
+          ? <button onClick={() => { stopReel(); yt.current?.pauseVideo(); }} className="rounded-lg border border-ball px-3 py-1.5 text-sm font-semibold text-ball">⏹ Stop</button>
+          : <button onClick={startReel} className="rounded-lg bg-ball px-3 py-1.5 text-sm font-semibold text-bg">▶ Play all</button>}
+      </div>
+      <div ref={el} className="mt-2 aspect-video overflow-hidden rounded-lg bg-black" />
+      {reel && cur !== null && (
+        <div className="mt-1.5 flex gap-1.5 text-xs">
+          <button disabled={cur === 0} onClick={() => play(cur - 1)} className="flex-1 rounded-md border border-line py-1.5 disabled:opacity-40">◀ Previous</button>
+          <button onClick={() => play(cur)} className="flex-1 rounded-md border border-line py-1.5">↻ Replay</button>
+          <button disabled={cur >= clips.length - 1} onClick={() => play(cur + 1)} className="flex-1 rounded-md border border-line py-1.5 disabled:opacity-40">Next ▶</button>
+        </div>
+      )}
+      <ul ref={listEl} className="mt-2 max-h-80 divide-y divide-line overflow-y-auto text-sm">
+        {clips.map((x, i) => (
+          <li key={x.key} data-i={i} className={`flex items-center gap-2 py-2 ${cur === i ? 'text-ball' : ''}`}>
+            <button className="min-w-0 flex-1 text-left" onClick={() => { stopReel(); play(i); }}>
+              <span className="block truncate">▶ {x.label}</span>
+              <span className="block truncate text-xs text-muted">{x.sub} · {fmtTime(x.s)}–{fmtTime(x.e)}</span>
+            </button>
+            {x.extra}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

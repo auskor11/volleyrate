@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import { PhotoEditor } from '../components/Avatar';
 import { removeHighlight, useHighlights, type Highlight } from '../lib/highlights';
-import { createPlayer, type YTPlayer } from '../lib/youtube';
+import { ClipReel } from '../components/ClipReel';
 import { Link, useParams } from 'react-router-dom';
 import { AttrBar, PlayerCard } from '../components/PlayerCard';
 import { useRatedPlayers } from '../lib/rated';
@@ -222,18 +222,22 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
       </div>
       {open && (
         <div className="mt-3">
-          <h3 className="text-sm font-semibold">{STAT_GROUPS.find(g => g.stats.some(x => x.k === open))?.label} · {STAT_LABELS[open]} · tap to watch</h3>
+          <h3 className="text-sm font-semibold">{STAT_GROUPS.find(g => g.stats.some(x => x.k === open))?.label} · {STAT_LABELS[open]} · watch one, or play them all</h3>
           {st[open].length ? (
-            <ul className="mt-1 max-h-72 divide-y divide-line overflow-y-auto text-sm">
-              {st[open].map((cl, i) => (
-                <li key={`${cl.gameId}-${cl.t}-${i}`}>
-                  <Link to={`/games/${cl.gameId}?t=${cl.t}&r=${cl.s}`} className="flex justify-between py-2">
-                    <span className="truncate">{cl.title} <span className="text-muted">· {cl.date}</span></span>
-                    <span className="tabular-nums text-ball" title={`Touch at ${fmtTime(cl.t)}`}>▶ rally {fmtTime(cl.s)}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <div className="mt-2">
+              <ClipReel key={open} clips={[...st[open]]
+                .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title) || a.t - b.t)
+                .flatMap((cl, i) => {
+                  const g = games.find(x => x.id === cl.gameId);
+                  if (!g) return [];
+                  // the whole rally, stretched to include the touch if it was tagged after the clip ends
+                  return [{
+                    key: `${cl.gameId}-${cl.t}-${i}`, youtubeId: g.youtubeId, s: cl.s, e: Math.max(cl.e, cl.t + 2),
+                    label: `${STAT_LABELS[open]} ${i + 1} · ${cl.title}`, sub: cl.date,
+                    extra: <Link to={`/games/${cl.gameId}?t=${cl.t}&r=${cl.s}`} className="shrink-0 text-xs text-muted underline">in game</Link>,
+                  }];
+                })} />
+            </div>
           ) : <p className="mt-1 text-sm text-muted">None yet.</p>}
         </div>
       )}
@@ -280,53 +284,6 @@ export function Highlights({ playerId, name, sample }: { playerId: string; name:
   const auth = useAuth();
   const me = auth?.user?.email?.toLowerCase();
   const canRemove = (h: Highlight) => auth?.isAdmin || h.by === me || auth?.member?.playerId === playerId;
-  const [cur, setCur] = useState<number | null>(null);
-  const [reel, setReel] = useState(false);
-  const el = useRef<HTMLDivElement>(null);
-  const yt = useRef<YTPlayer | null>(null);
-  const loadedAt = useRef(0);   // when the current clip was loaded (ignore stale "ended" events just after)
-  const state = useRef({ list, cur, reel });
-  state.current = { list, cur, reel };
-
-  function play(i: number) {
-    const h = state.current.list?.[i];
-    if (!h || !yt.current) return;
-    setCur(i);
-    state.current.cur = i;
-    loadedAt.current = Date.now();
-    yt.current.loadVideoById({ videoId: h.youtubeId, startSeconds: Math.max(0, h.s - 0.5), endSeconds: h.e + 0.5 });
-  }
-  // move to the next highlight in the reel (once per clip), or finish
-  function next() {
-    const { list, cur, reel } = state.current;
-    if (!reel || !list || cur === null || Date.now() - loadedAt.current < 1500) return;
-    if (cur < list.length - 1) play(cur + 1);
-    else { setReel(false); state.current.reel = false; }
-  }
-
-  // Create the player as soon as there are highlights, so a tap can start playback directly
-  // (browsers, especially iPhones, only allow video to start straight from a tap).
-  const first = list?.[0];
-  useEffect(() => {
-    if (!first || !el.current || yt.current) return;
-    let dead = false;
-    const host = document.createElement('div');
-    el.current.replaceChildren(host);
-    createPlayer(host, first.youtubeId, st => { if (st === 0) next(); })  // 0 = ended at endSeconds
-      .then(p => { if (dead) p.destroy(); else yt.current = p; });
-    // backup: YouTube sometimes pauses at the end instead of reporting "ended"
-    const watch = setInterval(() => {
-      const { list, cur, reel } = state.current;
-      const h = cur !== null ? list?.[cur] : undefined;
-      if (reel && h && yt.current && yt.current.getCurrentTime() >= h.e + 0.4) next();
-    }, 300);
-    return () => { dead = true; clearInterval(watch); yt.current?.destroy(); yt.current = null; };
-  }, [first?.youtubeId]);  // eslint-disable-line react-hooks/exhaustive-deps
-
-  // keep the playing highlight visible in the list
-  const listEl = useRef<HTMLUListElement>(null);
-  useEffect(() => { listEl.current?.querySelector(`[data-i="${cur}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [cur]);
-
   if (!list) return null;
   if (!list.length) return (
     <section className="rounded-xl border border-dashed border-line p-4 text-sm text-muted">
@@ -336,35 +293,19 @@ export function Highlights({ playerId, name, sample }: { playerId: string; name:
   const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
   return (
     <section className="rounded-xl border border-line bg-surface p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-lg font-semibold">★ Highlights <span className="text-sm font-normal text-muted">({list.length})</span></h2>
-        {reel
-          ? <button onClick={() => { setReel(false); state.current.reel = false; yt.current?.pauseVideo(); }} className="rounded-lg border border-ball px-3 py-1.5 text-sm font-semibold text-ball">⏹ Stop</button>
-          : <button onClick={() => { setReel(true); state.current.reel = true; play(0); }} className="rounded-lg bg-ball px-3 py-1.5 text-sm font-semibold text-bg">▶ Play all</button>}
-      </div>
-      <div ref={el} className="mt-3 aspect-video overflow-hidden rounded-lg bg-black" />
-      {cur !== null && list[cur] && (
-        <p className="mt-1 text-xs text-muted">
-          {reel ? `Reel ${cur + 1}/${list.length} · ` : ''}{list[cur].title} · {fmtTime(list[cur].s)}{list[cur].note ? ` · ${list[cur].note}` : ''}
-        </p>
-      )}
-      <ul ref={listEl} className="mt-2 max-h-80 divide-y divide-line overflow-y-auto text-sm">
-        {list.map((h, i) => (
-          <li key={h.id} data-i={i} className={`flex items-center gap-2 py-2 ${cur === i ? 'text-ball' : ''}`}>
-            <button className="min-w-0 flex-1 text-left" onClick={() => { setReel(false); state.current.reel = false; play(i); }}>
-              <span className="block truncate">▶ {h.note || `Rally at ${fmtTime(h.s)}`}</span>
-              <span className="block truncate text-xs text-muted">
-                {h.title} · {fmtDate(h.date)} · {fmtTime(h.s)}–{fmtTime(h.e)}{h.by !== me && h.byName ? ` · added by ${h.byName.split(' ')[0]}` : ''}
-              </span>
-            </button>
-            <Link to={`/games/${h.gameId}?t=${h.s}`} className="shrink-0 text-xs text-muted underline">in game</Link>
-            {canRemove(h) && (
-              <button className="shrink-0 text-xs text-muted" title="Remove highlight"
-                onClick={() => { if (confirm(`Remove this highlight from ${name}'s profile?`)) removeHighlight(h.id); }}>✕</button>
-            )}
-          </li>
-        ))}
-      </ul>
+      <h2 className="mb-2 font-display text-lg font-semibold">★ Highlights <span className="text-sm font-normal text-muted">({list.length})</span></h2>
+      <ClipReel clips={list.map(h => ({
+        key: h.id, youtubeId: h.youtubeId, s: h.s, e: h.e,
+        label: h.note || `Rally at ${fmtTime(h.s)}`,
+        sub: `${h.title} · ${fmtDate(h.date)}${h.by !== me && h.byName ? ` · added by ${h.byName.split(' ')[0]}` : ''}`,
+        extra: <>
+          <Link to={`/games/${h.gameId}?t=${h.s}&r=${h.s}`} className="shrink-0 text-xs text-muted underline">in game</Link>
+          {canRemove(h) && (
+            <button className="shrink-0 text-xs text-muted" title="Remove highlight"
+              onClick={() => { if (confirm(`Remove this highlight from ${name}'s profile?`)) removeHighlight(h.id); }}>✕</button>
+          )}
+        </>,
+      }))} />
     </section>
   );
 }

@@ -76,3 +76,5 @@ body {
 [data-ui="clean"] .tier-unrated .card-ovr { color: var(--color-ink); }
 [data-ui="clean"] .card-deco { display: none; }
 [data-ui="clean"] .card-num { opacity: 1; color: var(--color-muted); font-size: 1rem; font-weight: 500; }
+/* game page on a big screen: no top bar or bottom tabs in Clean, so the video and lists can use the full height */
+@media (min-width: 1024px) { [data-ui="clean"] .game-fill { height: calc(100dvh - 2rem); } }

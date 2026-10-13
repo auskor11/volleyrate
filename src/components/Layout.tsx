@@ -22,7 +22,7 @@ const tabs = [
 ];
 const adminTab = { to: '/admin', label: 'Admin', icon: 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z' };
 
-function AccountMenu() {
+function AccountMenu({ up = false }: { up?: boolean }) {
   const { user, isAdmin, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -42,7 +42,7 @@ function AccountMenu() {
           : initial}
       </button>
       {open && (
-        <div className="absolute right-0 top-11 w-64 overflow-hidden rounded-xl border border-line bg-surface shadow-xl shadow-black/50">
+        <div className={`absolute w-64 ${up ? 'bottom-11 left-0' : 'right-0 top-11'} overflow-hidden rounded-xl border border-line bg-surface shadow-xl shadow-black/50`}>
           <div className="border-b border-line px-4 py-3">
             <div className="truncate font-medium">{user?.displayName}</div>
             <div className="truncate text-sm text-muted">{user?.email}</div>
@@ -97,11 +97,12 @@ export function Layout() {
             {({ isActive }) => <><span className={isActive ? 'text-ball' : ''}><NavIcon d={t.icon} /></span>{t.label}</>}
           </NavLink>
         ))}
+        <div className="mt-auto px-1"><AccountMenu up /></div>
       </aside>
     )}
     <div className={`mx-auto flex min-h-dvh flex-col ${wide ? 'max-w-7xl' : 'max-w-3xl'} ${clean ? 'lg:pl-52 lg:max-w-none' : ''}`}>
       <div className={clean ? `mx-auto flex w-full flex-1 flex-col ${wide ? 'max-w-7xl' : 'max-w-3xl'}` : 'contents'}>
-      <header className="safe-top sticky top-0 z-10 border-b border-line/60 bg-bg/90 backdrop-blur">
+      <header className={`safe-top sticky top-0 z-10 ${clean ? 'lg:hidden' : ''} border-b border-line/60 bg-bg/90 backdrop-blur`}>
         <div className="flex h-14 items-center gap-2 px-4">
           <span className={clean ? 'contents lg:hidden' : 'contents'}>
             <Logo />
@@ -110,7 +111,7 @@ export function Layout() {
           <div className="ml-auto"><AccountMenu /></div>
         </div>
       </header>
-      <main className={`flex-1 px-4 pb-28 pt-4 ${clean ? "lg:pb-10" : ""}`}>
+      <main className={`flex-1 px-4 pb-28 pt-4 ${clean ? (wide ? 'lg:pb-4' : 'lg:pb-10') : ''}`}>
         <Outlet />
       </main>
       <nav className={`safe-bottom fixed inset-x-0 bottom-0 z-10 border-t border-line/60 bg-bg/95 backdrop-blur ${clean ? 'lg:hidden' : ''}`}>
