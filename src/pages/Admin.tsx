@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import {
-  importRoster, importStartingRatings, saveRatings, savePlayer, setMember, slug, useMembers, usePlayers, type Member, type Player, type RosterRow,
+  approveRequest, cancelRequest, importRoster, importStartingRatings, useAccessRequests, saveRatings, savePlayer, setMember, slug, useMembers, usePlayers, type Member, type Player, type RosterRow,
 } from '../lib/data';
 import { CATEGORIES, POSITIONS, overall, type Position, type Ratings } from '../lib/ratings';
 import { suggestTouches, useGames, type Game } from '../lib/games';
@@ -21,7 +21,7 @@ const btn = 'rounded-lg bg-ball px-4 py-2 font-semibold text-bg disabled:opacity
 
 export function Admin() {
   const { isAdmin } = useAuth();
-  const [tab, setTab] = useState<'ratings' | 'roster' | 'access' | 'detector'>('ratings');
+  const [tab, setTab] = useState<'ratings' | 'roster' | 'access' | 'detector'>(() => new URLSearchParams(location.search).get('tab') === 'access' ? 'access' : 'ratings');
   if (!isAdmin) return <p className="text-muted">Admins only.</p>;
   return (
     <div>
@@ -235,11 +235,53 @@ function Roster() {
 }
 
 const ROLES: { k: Member['role']; label: string; what: string }[] = [
-  { k: 'viewer', label: 'Viewer', what: 'watches games and sees ratings and stats; changes nothing' },
+  { k: 'viewer', label: 'Viewer', what: 'like a guest, but signed in (also sees highlights); changes nothing' },
   { k: 'editor', label: 'Editor', what: 'a viewer who also reviews rallies and tags games' },
   { k: 'player', label: 'Player', what: 'everything except admin settings (adds games, highlights, photos)' },
   { k: 'admin', label: 'Admin', what: 'everything, including ratings and access' },
 ];
+
+/** People who signed in and asked to help: approve with a role (and their player), or dismiss. */
+function Requests() {
+  const { players } = usePlayers();
+  const list = useAccessRequests(true);
+  const [pick, setPick] = useState<Record<string, { role: Member['role']; pid: string }>>({});
+  if (!list.length) return null;
+  return (
+    <section className={`${card} border-ball/50`}>
+      <h2 className="font-semibold">Asking for access ({list.length})</h2>
+      <ul className="mt-2 divide-y divide-line text-sm">
+        {list.map(r => {
+          const c = pick[r.email] ?? { role: r.want, pid: r.playerId ?? '' };
+          const set = (x: Partial<typeof c>) => setPick(p => ({ ...p, [r.email]: { ...c, ...x } }));
+          return (
+            <li key={r.email} className="space-y-2 py-3">
+              <div>
+                <b>{r.name}</b> <span className="text-muted">· {r.email}</span>
+                <div className="text-xs text-muted">
+                  Wants to be {r.want === 'player' ? `a player${r.playerId ? ` (says they're ${players?.find(p => p.id === r.playerId)?.name ?? r.playerId})` : ''}` : 'an editor'}
+                  {r.at ? ` · ${r.at.toDate().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` : ''}
+                </div>
+                {r.note && <p className="mt-1 text-xs">“{r.note}”</p>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <select className="rounded-md border border-line bg-raised px-2 py-1" value={c.role} onChange={e => set({ role: e.target.value as Member['role'] })}>
+                  {ROLES.filter(x => x.k !== 'admin').map(x => <option key={x.k} value={x.k}>{x.label}</option>)}
+                </select>
+                <select className="rounded-md border border-line bg-raised px-2 py-1" value={c.pid} onChange={e => set({ pid: e.target.value })}>
+                  <option value="">Not linked to a player</option>
+                  {players?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <button className="rounded-md bg-ball px-3 py-1 font-semibold text-bg" onClick={() => approveRequest(r, c.role, c.pid || null)}>Approve</button>
+                <button className="rounded-md border border-line px-3 py-1 text-muted" onClick={() => { if (confirm(`Dismiss ${r.name}'s request? They can still watch as a guest.`)) cancelRequest(r.email); }}>Dismiss</button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
 
 function Access() {
   const { players } = usePlayers();
@@ -248,13 +290,14 @@ function Access() {
   const [pid, setPid] = useState('');
   const [role, setRole] = useState<Member['role'] | ''>('');  // '' = by link: player if linked, else viewer
   const name = (p: Player | undefined) => p?.name ?? '—';
-  const newRole: Member['role'] = role || (pid ? 'player' : 'viewer');
+  const newRole: Member['role'] = role || (pid ? 'player' : 'editor');
 
   return (
     <div className="space-y-4">
+      <Requests />
       <section className={card}>
         <h2 className="font-semibold">Give someone access</h2>
-        <p className="mt-1 text-sm text-muted">Only Google accounts listed here can open the app.</p>
+        <p className="mt-1 text-sm text-muted">Anyone can watch as a guest without signing in. People who sign in and ask for access show up above; you can also add an account here.</p>
         <ul className="mt-2 space-y-0.5 text-xs text-muted">
           {ROLES.map(r => <li key={r.k}><b className="text-ink">{r.label}</b>: {r.what}</li>)}
         </ul>
@@ -265,7 +308,7 @@ function Access() {
           {players?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <select className={`${input} mt-2`} value={role} onChange={e => setRole(e.target.value as Member['role'] | '')}>
-          <option value="">Role: {pid ? 'Player' : 'Viewer'} (default)</option>
+          <option value="">Role: {pid ? 'Player' : 'Editor'} (default)</option>
           {ROLES.map(r => <option key={r.k} value={r.k}>Role: {r.label}</option>)}
         </select>
         <button className={`${btn} mt-3`} disabled={!/^\S+@\S+\.\S+$/.test(email)}

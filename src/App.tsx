@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { AuthProvider, useAuth } from './lib/auth';
-import { Loading, Login, NotMember } from './pages/Gate';
+import { Loading } from './pages/Gate';
 import { Home } from './pages/Home';
 import { AddGame, Games } from './pages/Games';
 import { PlayerDetail, Players } from './pages/Players';
@@ -13,10 +13,9 @@ const Admin = lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin }
 const later = (el: React.ReactNode) => <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>{el}</Suspense>;
 
 function Routed() {
-  const { user, member, loading } = useAuth();
+  // no sign-in wall: guests watch; signing in (and an admin's OK) unlocks reviewing and tagging
+  const { loading, isAdmin, isPlayer } = useAuth();
   if (loading) return <Loading />;
-  if (!user) return <Login />;
-  if (!member) return <NotMember />;
   return (
     <Routes>
       <Route element={<Layout />}>
@@ -24,9 +23,9 @@ function Routed() {
         <Route path="players" element={<Players />} />
         <Route path="players/:id" element={<PlayerDetail />} />
         <Route path="games" element={<Games />} />
-        <Route path="games/new" element={<AddGame />} />
+        <Route path="games/new" element={isPlayer ? <AddGame /> : <Navigate to="/games" replace />} />
         <Route path="games/:id" element={later(<GameView />)} />
-        <Route path="admin" element={later(<Admin />)} />
+        <Route path="admin" element={isAdmin ? later(<Admin />) : <Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

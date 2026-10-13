@@ -11,6 +11,8 @@ interface AuthState {
   user: User | null;
   member: Member | null;      // null = signed in but not on the team list
   isAdmin: boolean;
+  isGuest: boolean;    // not on the team list (signed out, or signed in without access): watches only
+  name: string;        // first name to record on things this person does (never their email: games are public)
   isPlayer: boolean;   // players (and admins): everything except admin settings
   canEdit: boolean;    // players, admins and editors: review rallies and tag games
   loading: boolean;
@@ -75,6 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthState = {
     user, member, loading, error,
     isAdmin: member?.role === 'admin',
+    isGuest: !member,
+    name: (user?.displayName || user?.email || 'Someone').split(/[ @]/)[0],
     isPlayer: member?.role === 'admin' || member?.role === 'player',
     canEdit: member?.role === 'admin' || member?.role === 'player' || member?.role === 'editor',
     signIn: async () => {

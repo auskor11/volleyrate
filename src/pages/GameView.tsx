@@ -762,9 +762,11 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
             <h1 className="truncate font-display text-2xl font-bold">{game.title}</h1>
             <p className="text-sm text-muted">{game.date} · {live} rallies{!game.reviewed && ' · needs review'}</p>
           </div>
-          <button onClick={() => setShowHistory(true)} className="mt-5 shrink-0 rounded-lg border border-line px-3 py-1.5 text-sm">
-            History
-          </button>
+          {canEdit && (
+            <button onClick={() => setShowHistory(true)} className="mt-5 shrink-0 rounded-lg border border-line px-3 py-1.5 text-sm">
+              History
+            </button>
+          )}
           {canDelete && (
             <button onClick={remove} className="mt-5 shrink-0 rounded-lg border border-bad/40 px-3 py-1.5 text-sm text-bad">
               Delete game
@@ -1171,7 +1173,8 @@ const ATTR_LABEL = Object.fromEntries(CATEGORIES.flatMap(c => c.attrs.map(([k, l
  * Strength scales how much this game counts for that player (stats and experience).
  */
 function RatingChanges({ game }: { game: Game }) {
-  const user = useAuth()?.user ?? null;
+  const auth = useAuth();
+  const user = auth?.user ?? null;
   const games = useGames();
   const { players } = usePlayers();
   const settings = useEngineSettings();
@@ -1209,7 +1212,7 @@ function RatingChanges({ game }: { game: Game }) {
     setBusy('Saving…');
     await createBackup(`Before ${nextApplied ? (applied ? 'updating' : 'applying') : 'undoing'} "${game.title}" (${game.date})`,
       user?.email ?? '', players!, settings, games!);
-    await setGameRating(game.id, nextApplied ? { applied: true, weights: full, by: user?.email ?? '' } : { applied: false });
+    await setGameRating(game.id, nextApplied ? { applied: true, weights: full, by: auth.name } : { applied: false });
     const nm = (pid: string) => players!.find(p => p.id === pid)?.name ?? pid;
     const odd = Object.entries(full).filter(([, x]) => x !== 1).map(([pid, x]) => `${nm(pid)} ${x}×`);
     logHistory(game.id, user, [nextApplied ? `Applied to ratings${odd.length ? ` (${odd.join(', ')}; others 1×)` : ' (everyone 1×)'}` : 'Removed from ratings']).catch(() => {});

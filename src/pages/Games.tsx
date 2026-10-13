@@ -103,7 +103,7 @@ const input = 'w-full rounded-lg border border-line bg-raised px-3 py-2.5 text-i
 const step = 'rounded-xl border border-line bg-surface p-4';
 
 export function AddGame() {
-  const { user } = useAuth();
+  const { user, name } = useAuth();
   const nav = useNavigate();
   const [link, setLink] = useState('');
   const ytId = parseYouTubeId(link);
@@ -178,7 +178,7 @@ export function AddGame() {
         segments: result!.segments ?? [],
         peaks: result!.peaks ?? [],
         rating: { applied: false },  // stats count toward ratings once an admin applies this game
-        reviewed: false, createdBy: user?.email ?? '',
+        reviewed: false, createdBy: name,
         detector: { version: DETECTOR_VERSION, elapsed: Math.round(result!.elapsed), device: result!.userAgent },
         // which camera this video is (the side one unless chosen otherwise); more cameras can be added on the game page
         ...(camera.kind !== 'side' ? { camera: camera.kind } : {}),

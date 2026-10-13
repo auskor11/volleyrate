@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, deleteField, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, deleteDoc, deleteField, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Position, Ratings } from './ratings';
 
@@ -93,3 +93,47 @@ export async function importStartingRatings(file: Record<string, Ratings>, curre
 }
 
 export const slug = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+/** Someone signed in who isn't on the team list, asking to help (doc id = their lowercase email). */
+export interface AccessRequest {
+  email: string;
+  name: string;
+  want: 'editor' | 'player';
+  playerId?: string;       // "I'm this player" (for player requests)
+  note?: string;
+  at?: { toDate(): Date };
+}
+
+export async function requestAccess(email: string, r: Omit<AccessRequest, 'email' | 'at'>) {
+  await setDoc(doc(db, 'accessRequests', email.toLowerCase()), { ...r, at: serverTimestamp() });
+}
+
+export const cancelRequest = (email: string) => deleteDoc(doc(db, 'accessRequests', email.toLowerCase()));
+
+/** Your own pending request (null = none). */
+export function useMyRequest(email: string | null | undefined) {
+  const [r, setR] = useState<AccessRequest | null | undefined>(undefined);
+  useEffect(() => {
+    if (!email) { setR(null); return; }
+    return onSnapshot(doc(db, 'accessRequests', email.toLowerCase()),
+      s => setR(s.exists() ? ({ email: s.id, ...s.data() } as AccessRequest) : null), () => setR(null));
+  }, [email]);
+  return r;
+}
+
+/** Pending requests, for admins (the Admin tab shows how many). */
+export function useAccessRequests(enabled: boolean) {
+  const [list, setList] = useState<AccessRequest[]>([]);
+  useEffect(() => {
+    if (!enabled) { setList([]); return; }
+    return onSnapshot(collection(db, 'accessRequests'),
+      s => setList(s.docs.map(x => ({ email: x.id, ...x.data() }) as AccessRequest)), () => setList([]));
+  }, [enabled]);
+  return list;
+}
+
+/** Approve: put them on the team list with that role (and player), then clear the request. */
+export async function approveRequest(r: AccessRequest, role: Member['role'], playerId: string | null) {
+  await setMember(r.email, playerId, role);
+  await cancelRequest(r.email);
+}

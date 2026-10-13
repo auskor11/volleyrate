@@ -54,7 +54,8 @@ export function PlayerDetail() {
   const { players, model } = useRatedPlayers();
   const [as, setAs] = useState<Position | null>(null);  // what-if position (reset when opening another player)
   const [photo, setPhoto] = useState(false);
-  const isMember = !!useAuth()?.isPlayer;  // players and admins change photos (viewers and editors don't)
+  const isMember = !!useAuth()?.isPlayer;
+  const isGuest = useAuth()?.isGuest ?? true;  // highlights are for the team (they record who added them)  // players and admins change photos (viewers and editors don't)
   useEffect(() => setAs(null), [id]);
   if (!players || !model) return null;
   const p = players.find(x => x.id === id);
@@ -96,7 +97,7 @@ export function PlayerDetail() {
           </p>
         )}
       </section>
-      <Highlights playerId={p.id} name={p.name} />
+      {!isGuest && <Highlights playerId={p.id} name={p.name} />}
 
 
       {CATEGORIES.filter(c => c.attrs.length > 1).map(c => {

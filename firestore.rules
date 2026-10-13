@@ -44,8 +44,10 @@ service cloud.firestore {
 
     // Players can change the positions on their own profile (primary first), and anyone on the team can
     // change anyone's face photo (a small image, stored inline); nothing else.
+    // Guests (no sign-in) can watch: games, players and the ratings settings are public. Nothing public
+    // holds an email (games record first names). Members, highlights, history and backups stay private.
     match /players/{playerId} {
-      allow read: if isMember();
+      allow read: if true;
       allow create, delete: if isAdmin();
       allow update: if isAdmin() || (
         isPlayer()
@@ -72,6 +74,21 @@ service cloud.firestore {
         || (exists(memberPath()) && get(memberPath()).data.get('playerId', '') == resource.data.playerId);
     }
 
+    // Access requests: someone signed in who isn't on the list asks to be an editor or a player
+    // (doc id = their email). They can see and withdraw their own; admins see all and approve or dismiss.
+    match /accessRequests/{reqEmail} {
+      allow get: if signedIn() && (reqEmail == email() || isAdmin());
+      allow list: if isAdmin();
+      allow delete: if signedIn() && (reqEmail == email() || isAdmin());
+      allow create, update: if signedIn() && reqEmail == email() && !exists(memberPath())
+        && request.resource.data.keys().hasOnly(['name', 'want', 'playerId', 'note', 'at'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 80
+        && request.resource.data.want in ['editor', 'player']
+        && (!('playerId' in request.resource.data) || (request.resource.data.playerId is string && request.resource.data.playerId.size() <= 60))
+        && (!('note' in request.resource.data) || (request.resource.data.note is string && request.resource.data.note.size() <= 200))
+        && request.resource.data.at == request.time;
+    }
+
     // Rating backups (Admin → Ratings → Backups)
     match /ratingBackups/{id} {
       allow read, write: if isAdmin();
@@ -79,14 +96,14 @@ service cloud.firestore {
 
     // App settings, e.g. config/detector = the active rally-detector model. Admins change them.
     match /config/{key} {
-      allow read: if isMember();
+      allow read: if key == 'ratingsEngine' || isMember();
       allow write: if isAdmin();
     }
 
     // Games: everyone on the list watches; players add games; players and editors review and tag them;
     // only admins delete.
     match /games/{gameId} {
-      allow read: if isMember();
+      allow read: if true;
       allow create: if isPlayer();
       allow update: if canEdit();
       allow delete: if isAdmin();

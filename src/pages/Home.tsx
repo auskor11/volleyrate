@@ -8,6 +8,7 @@ import { LEADER_STATS, computeStats } from '../lib/stats';
 import { overall, tier } from '../lib/ratings';
 import { useTheme } from '../lib/theme';
 import { Avatar } from '../components/Avatar';
+import { GuestPanel } from '../components/GuestPanel';
 
 export function Home() {
   const { member, user } = useAuth();
@@ -25,12 +26,13 @@ export function Home() {
         Hi {me?.name ?? user?.displayName?.split(' ')[0] ?? 'there'}
       </h1>
 
+      <GuestPanel />
       {me ? (
         <section>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">Your card</h2>
           <PlayerCard player={me} size="lg" />
         </section>
-      ) : (
+      ) : member?.role === 'player' && (
         <p className="rounded-xl border border-line bg-surface p-4 text-sm text-muted">
           Your account isn't linked to a player card yet.
         </p>

@@ -167,7 +167,7 @@ export interface Game {
   duration: number;       // seconds
   rallies: Rally[];
   reviewed: boolean;
-  createdBy: string;
+  createdBy: string;   // first name of whoever added it (games are public: never an email)
   detector?: { version: string; elapsed: number; device: string };
   segments?: Segment[];
   peaks?: number[];       // contact-like sounds [t0, h0, t1, h1, ...] used to suggest touch moments

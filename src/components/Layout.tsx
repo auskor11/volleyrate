@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { setTheme, useTheme } from '../lib/theme';
+import { useAccessRequests } from '../lib/data';
 
 export function Logo({ className = 'h-7 w-7' }: { className?: string }) {
   return (
@@ -23,7 +24,7 @@ const tabs = [
 const adminTab = { to: '/admin', label: 'Admin', icon: 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z' };
 
 function AccountMenu({ up = false }: { up?: boolean }) {
-  const { user, isAdmin, signOut } = useAuth();
+  const { user, signOut, signIn, member, isGuest } = useAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -32,6 +33,13 @@ function AccountMenu({ up = false }: { up?: boolean }) {
     document.addEventListener('pointerdown', close);
     return () => document.removeEventListener('pointerdown', close);
   }, [open]);
+  if (!user) return (
+    <div ref={ref} className="relative flex items-center gap-2">
+      <button onClick={signIn} className="rounded-full bg-ink px-3.5 py-1.5 text-sm font-semibold text-bg">Sign in</button>
+      <button onClick={() => setOpen(o => !o)} aria-label="Look" className="flex h-9 w-9 items-center justify-center rounded-full bg-raised text-muted ring-1 ring-line">◐</button>
+      {open && <div className={`absolute z-30 w-64 ${up ? 'bottom-11 left-0' : 'right-0 top-11'} overflow-hidden rounded-xl border border-line bg-surface shadow-xl shadow-black/50`}><ThemeSwitch /></div>}
+    </div>
+  );
   const initial = (user?.displayName || user?.email || '?')[0].toUpperCase();
   return (
     <div ref={ref} className="relative">
@@ -46,7 +54,7 @@ function AccountMenu({ up = false }: { up?: boolean }) {
           <div className="border-b border-line px-4 py-3">
             <div className="truncate font-medium">{user?.displayName}</div>
             <div className="truncate text-sm text-muted">{user?.email}</div>
-            {isAdmin && <span className="mt-1 inline-block rounded bg-ball/20 px-1.5 text-xs text-ball">admin</span>}
+            <span className="mt-1 inline-block rounded bg-ball/20 px-1.5 text-xs text-ball">{isGuest ? 'guest' : member?.role}</span>
           </div>
           <ThemeSwitch />
           <button onClick={signOut} className="w-full px-4 py-3 text-left text-bad hover:bg-raised">Sign out</button>
@@ -82,6 +90,7 @@ const NavIcon = ({ d }: { d: string }) => (
 
 export function Layout() {
   const { isAdmin } = useAuth();
+  const requests = useAccessRequests(isAdmin).length;  // people waiting for access: a badge on Admin
   const clean = useTheme() === 'clean';
   // the game page uses a wide two-column layout on big screens
   const wide = /^\/games\/(?!new$)[^/]+$/.test(useLocation().pathname);
@@ -94,7 +103,7 @@ export function Layout() {
         {all.map(t => (
           <NavLink key={t.to} to={t.to} end={t.to === '/'}
             className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium ${isActive ? 'bg-raised text-ink' : 'text-muted hover:text-ink'}`}>
-            {({ isActive }) => <><span className={isActive ? 'text-ball' : ''}><NavIcon d={t.icon} /></span>{t.label}</>}
+            {({ isActive }) => <><span className={isActive ? 'text-ball' : ''}><NavIcon d={t.icon} /></span>{t.label}{t.to === '/admin' && requests > 0 && <span className="ml-1 rounded-full bg-bad px-1.5 text-[10px] font-bold text-white">{requests}</span>}</>}
           </NavLink>
         ))}
         <div className="mt-auto px-1"><AccountMenu up /></div>
@@ -125,7 +134,7 @@ export function Layout() {
                 `flex flex-1 flex-col items-center gap-0.5 pt-2 text-[11px] font-medium ${isActive ? 'text-ball' : 'text-muted'}`}
             >
               <NavIcon d={t.icon} />
-              {t.label}
+              <span>{t.label}{t.to === '/admin' && requests > 0 && <span className="ml-1 rounded-full bg-bad px-1.5 text-[10px] font-bold text-white">{requests}</span>}</span>
             </NavLink>
           ))}
         </div>
