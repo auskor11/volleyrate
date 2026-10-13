@@ -11,6 +11,7 @@ export interface ReelClip {
   e: number;
   label: string;        // first line in the list
   sub: string;          // second line (game, date, …)
+  star?: string;        // saved as a highlight (for whom), marked ★
   extra?: ReactNode;    // buttons at the end of the row
 }
 
@@ -98,7 +99,7 @@ export function ClipReel({ clips, autoStart = false, nowPlaying }: { clips: Reel
         {clips.map((x, i) => (
           <li key={x.key} data-i={i} className={`flex items-center gap-2 py-2 ${cur === i ? 'text-ball' : ''}`}>
             <button className="min-w-0 flex-1 text-left" onClick={() => { stopReel(); play(i); }}>
-              <span className="block truncate">▶ {x.label}</span>
+              <span className="block truncate">▶ {x.label}{x.star && <span className="ml-1 text-ball" title={`Highlight for ${x.star}`}>★</span>}</span>
               <span className="block truncate text-xs text-muted">{x.sub} · {fmtTime(x.s)}–{fmtTime(x.e)}</span>
             </button>
             {x.extra}

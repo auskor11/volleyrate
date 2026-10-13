@@ -175,6 +175,11 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
   const { players } = usePlayers();
   const [open, setOpen] = useState<StatKey | null>(null);
   const [star, setStar] = useState<{ gameId: string; s: number; e: number } | null>(null);  // saving a highlight
+  const allHighlights = useHighlights({ all: true });
+  // who a rally is already a highlight for (same game, same rally start), to mark it ★
+  const starredFor = (gameId: string, s: number) => [...new Set((allHighlights ?? [])
+    .filter(h => h.gameId === gameId && Math.abs(h.s - s) < 1)
+    .map(h => players?.find(p => p.id === h.playerId)?.name ?? h.playerId))].join(', ');
   if (!games) return null;
   const n = taggedGames(games);
   const st = computeStats(games)[playerId];
@@ -233,18 +238,19 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
                 const g = games.find(x => x.id === gameId);
                 return g && <>
                   <span className="text-xs text-muted">{c.label}</span>
-                  <button onClick={() => setStar({ gameId, s, e: c.e })} className="rounded-md border border-ball/50 px-2 py-0.5 text-xs font-semibold text-ball">★ Highlight</button>
+                  {c.star && <span className="rounded-md bg-ball/20 px-2 py-0.5 text-xs font-semibold text-ball">★ Highlight for {c.star}</span>}
+                  <button onClick={() => setStar({ gameId, s, e: c.e })} className="rounded-md border border-ball/50 px-2 py-0.5 text-xs font-semibold text-ball">{c.star ? '★ Add for someone else' : '★ Highlight'}</button>
                   <ShareRally gameId={gameId} rally={{ s }} title={`${g.title} · rally at ${fmtTime(s)}`} />
                 </>;
               }} clips={[...st[open]]
-                .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title) || a.t - b.t)
+                .sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title) || a.t - b.t)  // newest session first; each game in order
                 .flatMap((cl, i) => {
                   const g = games.find(x => x.id === cl.gameId);
                   if (!g) return [];
                   // the whole rally, stretched to include the touch if it was tagged after the clip ends
                   return [{
                     key: `${cl.gameId}|${cl.t}|${i}`, youtubeId: g.youtubeId, s: cl.s, e: Math.max(cl.e, cl.t + 2),
-                    label: `${STAT_LABELS[open]} ${i + 1} · ${cl.title}`, sub: cl.date,
+                    label: `${STAT_LABELS[open]} ${i + 1} · ${cl.title}`, sub: cl.date, star: starredFor(cl.gameId, cl.s) || undefined,
                     extra: <Link to={`/games/${cl.gameId}?t=${cl.t}&r=${cl.s}`} className="shrink-0 text-xs text-muted underline">in game</Link>,
                   }];
                 })} />
