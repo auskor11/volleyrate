@@ -24,6 +24,16 @@ service cloud.firestore {
     function isMember() {
       return isAdmin() || (signedIn() && exists(memberPath()));
     }
+    // Roles: admin; player (the default: everything below); editor (reviews and tags games); viewer (watch only)
+    function role() {
+      return get(memberPath()).data.get('role', 'player');
+    }
+    function isPlayer() {
+      return isAdmin() || (signedIn() && exists(memberPath()) && role() == 'player');
+    }
+    function canEdit() {
+      return isPlayer() || (signedIn() && exists(memberPath()) && role() == 'editor');
+    }
 
     // Team list: doc id = lowercase Google email -> { playerId, role }
     match /members/{memberEmail} {
@@ -38,7 +48,7 @@ service cloud.firestore {
       allow read: if isMember();
       allow create, delete: if isAdmin();
       allow update: if isAdmin() || (
-        isMember()
+        isPlayer()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photo', 'photoBy'])
         && (!('photo' in request.resource.data) || (request.resource.data.photo is string
             && request.resource.data.photo.size() < 150000
@@ -57,7 +67,7 @@ service cloud.firestore {
     // (as themselves); the person who added it, the player it belongs to, or an admin can remove it.
     match /highlights/{id} {
       allow read: if isMember();
-      allow create: if isMember() && request.resource.data.by == email();
+      allow create: if isPlayer() && request.resource.data.by == email();
       allow delete: if isAdmin() || resource.data.by == email()
         || (exists(memberPath()) && get(memberPath()).data.get('playerId', '') == resource.data.playerId);
     }
@@ -73,14 +83,18 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Games: anyone on the team can add one and review its rallies; only admins delete.
+    // Games: everyone on the list watches; players add games; players and editors review and tag them;
+    // only admins delete.
     match /games/{gameId} {
-      allow read, create, update: if isMember();
+      allow read: if isMember();
+      allow create: if isPlayer();
+      allow update: if canEdit();
       allow delete: if isAdmin();
 
-      // who changed what: anyone on the team can add entries, nobody can edit or remove them
+      // who changed what: whoever can edit adds entries, nobody can edit or remove them
       match /history/{entryId} {
-        allow read, create: if isMember();
+        allow read: if isMember();
+        allow create: if canEdit();
       }
     }
 

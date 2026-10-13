@@ -114,6 +114,13 @@ private.example/     the formats of the files in private/
 2. Add it to both lists.
 3. Deploy the rules and the app.
 
+## Roles
+
+Admin → Access lists every Google account that can open the app, each with a role:
+**Viewer** (watches games, sees ratings and stats; changes nothing), **Editor** (a viewer who also reviews
+rallies and tags games), **Player** (everything except admin settings: adds games, highlights, photos; the
+default for accounts linked to a player), **Admin** (everything). `firestore.rules` enforces the same split.
+
 ## Checking rating changes
 
 Before changing how ratings or stats are calculated, run `npm run ratings:snapshot`; after the change, run

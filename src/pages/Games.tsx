@@ -18,6 +18,7 @@ export function Games() {
 }
 
 export function GamesList({ games }: { games: Game[] | null }) {
+  const isPlayer = useAuth()?.isPlayer ?? true;  // viewers and editors don't add games (no sign-in in the dev preview)
   const [q, setQ] = useState('');
   // which date groups are expanded (remembered on this device); default = the most recent date
   const [open, setOpen] = useState<Set<string> | null>(() => {
@@ -40,7 +41,7 @@ export function GamesList({ games }: { games: Game[] | null }) {
     <div>
       <div className="flex items-center justify-between">
         <h1 className="font-display text-3xl font-bold">Games</h1>
-        <Link to="/games/new" className="rounded-lg bg-ball px-4 py-2 font-semibold text-bg">+ Add game</Link>
+        {isPlayer && <Link to="/games/new" className="rounded-lg bg-ball px-4 py-2 font-semibold text-bg">+ Add game</Link>}
       </div>
       {games && !games.length && (
         <div className="mt-4 rounded-xl border border-dashed border-line p-6 text-center text-muted">

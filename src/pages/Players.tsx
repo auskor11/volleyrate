@@ -54,7 +54,7 @@ export function PlayerDetail() {
   const { players, model } = useRatedPlayers();
   const [as, setAs] = useState<Position | null>(null);  // what-if position (reset when opening another player)
   const [photo, setPhoto] = useState(false);
-  const isMember = !!useAuth()?.member;
+  const isMember = !!useAuth()?.isPlayer;  // players and admins change photos (viewers and editors don't)
   useEffect(() => setAs(null), [id]);
   if (!players || !model) return null;
   const p = players.find(x => x.id === id);
@@ -171,6 +171,7 @@ function PositionsEditor({ player }: { player: { id: string; name: string; posit
 }
 
 function PlayerStatsSection({ playerId }: { playerId: string }) {
+  const canStar = !!useAuth()?.isPlayer;
   const games = useGames();
   const { players } = usePlayers();
   const [open, setOpen] = useState<StatKey | null>(null);
@@ -239,7 +240,7 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
                 return g && <>
                   <span className="text-xs text-muted">{c.label}</span>
                   {c.star && <span className="rounded-md bg-ball/20 px-2 py-0.5 text-xs font-semibold text-ball">★ Highlight for {c.star}</span>}
-                  <button onClick={() => setStar({ gameId, s, e: c.e })} className="rounded-md border border-ball/50 px-2 py-0.5 text-xs font-semibold text-ball">{c.star ? '★ Add for someone else' : '★ Highlight'}</button>
+                  {canStar && <button onClick={() => setStar({ gameId, s, e: c.e })} className="rounded-md border border-ball/50 px-2 py-0.5 text-xs font-semibold text-ball">{c.star ? '★ Add for someone else' : '★ Highlight'}</button>}
                   <ShareRally gameId={gameId} rally={{ s }} title={`${g.title} · rally at ${fmtTime(s)}`} />
                 </>;
               }} clips={[...st[open]]

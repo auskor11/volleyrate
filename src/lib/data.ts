@@ -16,7 +16,7 @@ export interface Player {
 export interface Member {
   email: string;
   playerId: string | null;
-  role: 'admin' | 'player';
+  role: 'admin' | 'player' | 'editor' | 'viewer';  // editor: reviews and tags games; viewer: watches only
 }
 
 export function usePlayers() {

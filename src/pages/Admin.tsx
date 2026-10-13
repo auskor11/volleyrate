@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import {
-  importRoster, importStartingRatings, saveRatings, savePlayer, setMember, slug, useMembers, usePlayers, type Player, type RosterRow,
+  importRoster, importStartingRatings, saveRatings, savePlayer, setMember, slug, useMembers, usePlayers, type Member, type Player, type RosterRow,
 } from '../lib/data';
 import { CATEGORIES, POSITIONS, overall, type Position, type Ratings } from '../lib/ratings';
 import { suggestTouches, useGames, type Game } from '../lib/games';
@@ -234,26 +234,42 @@ function Roster() {
   );
 }
 
+const ROLES: { k: Member['role']; label: string; what: string }[] = [
+  { k: 'viewer', label: 'Viewer', what: 'watches games and sees ratings and stats; changes nothing' },
+  { k: 'editor', label: 'Editor', what: 'a viewer who also reviews rallies and tags games' },
+  { k: 'player', label: 'Player', what: 'everything except admin settings (adds games, highlights, photos)' },
+  { k: 'admin', label: 'Admin', what: 'everything, including ratings and access' },
+];
+
 function Access() {
   const { players } = usePlayers();
   const members = useMembers(true);
   const [email, setEmail] = useState('');
   const [pid, setPid] = useState('');
+  const [role, setRole] = useState<Member['role'] | ''>('');  // '' = by link: player if linked, else viewer
   const name = (p: Player | undefined) => p?.name ?? '—';
+  const newRole: Member['role'] = role || (pid ? 'player' : 'viewer');
 
   return (
     <div className="space-y-4">
       <section className={card}>
         <h2 className="font-semibold">Give someone access</h2>
         <p className="mt-1 text-sm text-muted">Only Google accounts listed here can open the app.</p>
+        <ul className="mt-2 space-y-0.5 text-xs text-muted">
+          {ROLES.map(r => <li key={r.k}><b className="text-ink">{r.label}</b>: {r.what}</li>)}
+        </ul>
         <input className={`${input} mt-3`} type="email" placeholder="name@gmail.com" value={email}
           onChange={e => setEmail(e.target.value)} />
         <select className={`${input} mt-2`} value={pid} onChange={e => setPid(e.target.value)}>
           <option value="">Not linked to a player</option>
           {players?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
+        <select className={`${input} mt-2`} value={role} onChange={e => setRole(e.target.value as Member['role'] | '')}>
+          <option value="">Role: {pid ? 'Player' : 'Viewer'} (default)</option>
+          {ROLES.map(r => <option key={r.k} value={r.k}>Role: {r.label}</option>)}
+        </select>
         <button className={`${btn} mt-3`} disabled={!/^\S+@\S+\.\S+$/.test(email)}
-          onClick={async () => { await setMember(email, pid || null); setEmail(''); setPid(''); }}>
+          onClick={async () => { await setMember(email, pid || null, newRole); setEmail(''); setPid(''); setRole(''); }}>
           Add
         </button>
       </section>
@@ -263,7 +279,11 @@ function Access() {
           {members.map(m => (
             <li key={m.email} className="flex items-center gap-2 py-2">
               <span className="min-w-0 flex-1 truncate">{m.email}</span>
-              {m.role === 'admin' && <span className="rounded bg-ball/20 px-1.5 text-xs text-ball">admin</span>}
+              <select className={`rounded-md border px-2 py-1 text-sm ${m.role === 'admin' ? 'border-ball/50 bg-ball/10 text-ball' : 'border-line bg-raised'}`}
+                value={m.role} aria-label="Role"
+                onChange={e => { const r = e.target.value as Member['role']; if (r !== 'admin' || confirm(`Make ${m.email} an admin? Admins can change everything, including ratings and who has access.`)) setMember(m.email, m.playerId, r); }}>
+                {ROLES.map(r => <option key={r.k} value={r.k}>{r.label}</option>)}
+              </select>
               <select className="rounded-md border border-line bg-raised px-2 py-1 text-sm" value={m.playerId ?? ''}
                 onChange={e => setMember(m.email, e.target.value || null)}>
                 <option value="">—</option>

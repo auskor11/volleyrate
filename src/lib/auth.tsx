@@ -11,6 +11,8 @@ interface AuthState {
   user: User | null;
   member: Member | null;      // null = signed in but not on the team list
   isAdmin: boolean;
+  isPlayer: boolean;   // players (and admins): everything except admin settings
+  canEdit: boolean;    // players, admins and editors: review rallies and tag games
   loading: boolean;
   error: string | null;
   signIn: () => Promise<void>;
@@ -73,6 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthState = {
     user, member, loading, error,
     isAdmin: member?.role === 'admin',
+    isPlayer: member?.role === 'admin' || member?.role === 'player',
+    canEdit: member?.role === 'admin' || member?.role === 'player' || member?.role === 'editor',
     signIn: async () => {
       setError(null);
       const provider = new GoogleAuthProvider();

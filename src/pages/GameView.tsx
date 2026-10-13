@@ -326,17 +326,20 @@ const btn = 'rounded-lg border border-line bg-raised px-3 py-2.5 text-sm font-se
 export function GameView() {
   const { id } = useParams();
   const game = useGame(id);
-  const { isAdmin } = useAuth();
+  const { isAdmin, canEdit, isPlayer } = useAuth();
   if (game === undefined) return null;
   if (game === null) return <p className="text-muted">Game not found. <Link to="/games" className="text-ball">Back</Link></p>;
-  return <GamePlayer game={game} canDelete={isAdmin} />;
+  return <GamePlayer game={game} canDelete={isAdmin} canEdit={canEdit} canStar={isPlayer} />;
 }
 
-export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; canDelete: boolean; samplePlayers?: Player[] }) {
+/** canEdit: may review and tag (players, editors, admins); canStar: may save highlights (players, admins). */
+export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, canStar = true }: {
+  game: Game; canDelete: boolean; samplePlayers?: Player[]; canEdit?: boolean; canStar?: boolean;
+}) {
   const id = game.id;
   const nav = useNavigate();
   const [search] = useSearchParams();
-  const [mode, setMode] = useState<Mode>(search.get('review') ? 'review' : search.get('tag') ? 'tag' : search.get('box') ? 'box' : 'watch');
+  const [mode, setMode] = useState<Mode>(canEdit && search.get('review') ? 'review' : canEdit && search.get('tag') ? 'tag' : search.get('box') ? 'box' : 'watch');
   const { players: dbPlayers } = usePlayers();
   const players = samplePlayers ?? dbPlayers;  // samplePlayers: dev preview only
   const [rallies, setRallies] = useState<Rally[]>([]);
@@ -787,8 +790,8 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
               🎥 {cameraLabel(c)}
             </button>
           ))}
-          {!samplePlayers && <button onClick={() => setAddingCam(true)} className="rounded-md border border-dashed border-line px-2.5 py-1 text-muted">+ Add camera</button>}
-          {!samplePlayers && (
+          {!samplePlayers && canEdit && <button onClick={() => setAddingCam(true)} className="rounded-md border border-dashed border-line px-2.5 py-1 text-muted">+ Add camera</button>}
+          {!samplePlayers && canEdit && (
             <button onClick={() => setRefreshing(true)} className="rounded-md border border-dashed border-line px-2.5 py-1 text-muted"
               title={`Re-run the ${cam.name} camera's rally detector: refreshes its training examples and (back cameras) which end each serve came from. Rallies stay as they are.`}>⟳ Detector data</button>
           )}
@@ -815,7 +818,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
         <div className="flex items-center justify-between text-sm">
           <span className="flex items-center gap-2 font-medium">
             {rally ? <>Rally {cur + 1} · {fmtTime(rally.s)}–{fmtTime(rally.e)}
-              <button onClick={() => setHighlighting(true)} className="rounded-md border border-ball/50 px-2 py-0.5 text-xs font-semibold text-ball">★ Highlight</button>
+              {canStar && <button onClick={() => setHighlighting(true)} className="rounded-md border border-ball/50 px-2 py-0.5 text-xs font-semibold text-ball">★ Highlight</button>}
               <ShareRally gameId={game.id} rally={rally} title={`${game.title} · rally ${cur + 1}`} />
             </> : <span className="text-muted">Tap a rally to play it</span>}
           </span>
@@ -912,7 +915,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
 
       <div className="flex min-h-0 flex-1 flex-col gap-2">
         <div className="flex shrink-0 gap-1 rounded-xl bg-surface p-1">
-          {(['watch', 'review', 'tag', 'box'] as const).map(m => (
+          {(canEdit ? ['watch', 'review', 'tag', 'box'] as const : ['watch', 'box'] as const).map(m => (
             <button key={m} onClick={() => { setMode(m); setCur(-1); setPlayAll(false); }}
               className={`flex-1 rounded-lg py-2 text-sm font-semibold ${mode === m ? 'bg-raised text-ink' : 'text-muted'}`}>
               {m === 'watch' ? 'Watch' : m === 'review' ? 'Review' : m === 'tag' ? 'Tag' : 'Box score'}
