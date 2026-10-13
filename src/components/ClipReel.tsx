@@ -14,12 +14,14 @@ export interface ReelClip {
   extra?: ReactNode;    // buttons at the end of the row
 }
 
-export function ClipReel({ clips, autoStart = false }: { clips: ReelClip[]; autoStart?: boolean }) {
+/** `nowPlaying`: buttons for the clip that's playing (highlight, share, …), shown under the video. */
+export function ClipReel({ clips, autoStart = false, nowPlaying }: { clips: ReelClip[]; autoStart?: boolean; nowPlaying?: (c: ReelClip) => ReactNode }) {
   const [cur, setCur] = useState<number | null>(null);
   const [reel, setReel] = useState(false);
   const el = useRef<HTMLDivElement>(null);
   const yt = useRef<YTPlayer | null>(null);
   const loadedAt = useRef(0);   // when the current clip was loaded (ignore stale "ended" events just after)
+  const video = useRef('');     // the YouTube video in the player now
   const state = useRef({ clips, cur, reel });
   state.current = { clips, cur, reel };
 
@@ -29,7 +31,15 @@ export function ClipReel({ clips, autoStart = false }: { clips: ReelClip[]; auto
     setCur(i);
     state.current.cur = i;
     loadedAt.current = Date.now();
-    yt.current.loadVideoById({ videoId: c.youtubeId, startSeconds: Math.max(0, c.s - 0.5), endSeconds: c.e + 0.5 });
+    // Same video: jump within it. Loading a video again makes an iPhone leave fullscreen, so that only
+    // happens when the next clip is from another game. (No endSeconds: the watcher below stops each clip.)
+    if (video.current === c.youtubeId) {
+      yt.current.seekTo(Math.max(0, c.s - 0.5), true);
+      yt.current.playVideo();
+    } else {
+      video.current = c.youtubeId;
+      yt.current.loadVideoById({ videoId: c.youtubeId, startSeconds: Math.max(0, c.s - 0.5) });
+    }
   }
   const startReel = () => { setReel(true); state.current.reel = true; play(0); };
   const stopReel = () => { setReel(false); state.current.reel = false; };
@@ -49,14 +59,16 @@ export function ClipReel({ clips, autoStart = false }: { clips: ReelClip[]; auto
     let dead = false;
     const host = document.createElement('div');
     el.current.replaceChildren(host);
-    createPlayer(host, first.youtubeId, st => { if (st === 0) next(); })  // 0 = ended at endSeconds
-      .then(p => { if (dead) p.destroy(); else { yt.current = p; if (autoStart) startReel(); } });
-    // backup: YouTube sometimes pauses at the end instead of reporting "ended"
+    createPlayer(host, first.youtubeId, st => { if (st === 0) next(); })  // 0 = the video ended
+      .then(p => { if (dead) p.destroy(); else { yt.current = p; video.current = first.youtubeId; if (autoStart) startReel(); } });
+    // each clip ends here: move on in a reel, otherwise pause (just after a jump, the old time can still show)
     const watch = setInterval(() => {
       const { clips, cur, reel } = state.current;
       const c = cur !== null ? clips[cur] : undefined;
-      if (reel && c && yt.current && yt.current.getCurrentTime() >= c.e + 0.4) next();
-    }, 300);
+      const p = yt.current;
+      if (!c || !p || Date.now() - loadedAt.current < 1500 || p.getPlayerState() !== 1) return;
+      if (p.getCurrentTime() >= c.e + 0.5) { if (reel) next(); else p.pauseVideo(); }
+    }, 250);
     return () => { dead = true; clearInterval(watch); yt.current?.destroy(); yt.current = null; };
   }, [first?.youtubeId]);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -74,6 +86,7 @@ export function ClipReel({ clips, autoStart = false }: { clips: ReelClip[]; auto
           : <button onClick={startReel} className="rounded-lg bg-ball px-3 py-1.5 text-sm font-semibold text-bg">▶ Play all</button>}
       </div>
       <div ref={el} className="mt-2 aspect-video overflow-hidden rounded-lg bg-black" />
+      {c && nowPlaying && <div className="mt-1.5 flex flex-wrap items-center gap-1.5">{nowPlaying(c)}</div>}
       {reel && cur !== null && (
         <div className="mt-1.5 flex gap-1.5 text-xs">
           <button disabled={cur === 0} onClick={() => play(cur - 1)} className="flex-1 rounded-md border border-line py-1.5 disabled:opacity-40">◀ Previous</button>

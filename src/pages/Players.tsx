@@ -4,12 +4,13 @@ import { useTheme } from '../lib/theme';
 import { PhotoEditor } from '../components/Avatar';
 import { removeHighlight, useHighlights, type Highlight } from '../lib/highlights';
 import { ClipReel } from '../components/ClipReel';
+import { HighlightDialog, ShareRally } from '../components/RallyActions';
 import { Link, useParams } from 'react-router-dom';
 import { AttrBar, PlayerCard } from '../components/PlayerCard';
 import { useRatedPlayers } from '../lib/rated';
 import { BLOCK_CREDIT, METRICS, experience, metricsFor, type RatingModel } from '../lib/engine';
 import { fmtTime, useGames } from '../lib/games';
-import { savePositions } from '../lib/data';
+import { savePositions, usePlayers } from '../lib/data';
 import { STAT_GROUPS, STAT_LABELS, avgGrade, computeStats, ratio, taggedGames, type StatKey } from '../lib/stats';
 import { CATEGORIES, POSITIONS, categoryScore, categoryWeights, overall, type Position } from '../lib/ratings';
 
@@ -171,7 +172,9 @@ function PositionsEditor({ player }: { player: { id: string; name: string; posit
 
 function PlayerStatsSection({ playerId }: { playerId: string }) {
   const games = useGames();
+  const { players } = usePlayers();
   const [open, setOpen] = useState<StatKey | null>(null);
+  const [star, setStar] = useState<{ gameId: string; s: number; e: number } | null>(null);  // saving a highlight
   if (!games) return null;
   const n = taggedGames(games);
   const st = computeStats(games)[playerId];
@@ -225,14 +228,22 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
           <h3 className="text-sm font-semibold">{STAT_GROUPS.find(g => g.stats.some(x => x.k === open))?.label} · {STAT_LABELS[open]} · watch one, or play them all</h3>
           {st[open].length ? (
             <div className="mt-2">
-              <ClipReel key={open} clips={[...st[open]]
+              <ClipReel key={open} nowPlaying={c => {
+                const [gameId, s] = [c.key.split('|')[0], c.s];
+                const g = games.find(x => x.id === gameId);
+                return g && <>
+                  <span className="text-xs text-muted">{c.label}</span>
+                  <button onClick={() => setStar({ gameId, s, e: c.e })} className="rounded-md border border-ball/50 px-2 py-0.5 text-xs font-semibold text-ball">★ Highlight</button>
+                  <ShareRally gameId={gameId} rally={{ s }} title={`${g.title} · rally at ${fmtTime(s)}`} />
+                </>;
+              }} clips={[...st[open]]
                 .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title) || a.t - b.t)
                 .flatMap((cl, i) => {
                   const g = games.find(x => x.id === cl.gameId);
                   if (!g) return [];
                   // the whole rally, stretched to include the touch if it was tagged after the clip ends
                   return [{
-                    key: `${cl.gameId}-${cl.t}-${i}`, youtubeId: g.youtubeId, s: cl.s, e: Math.max(cl.e, cl.t + 2),
+                    key: `${cl.gameId}|${cl.t}|${i}`, youtubeId: g.youtubeId, s: cl.s, e: Math.max(cl.e, cl.t + 2),
                     label: `${STAT_LABELS[open]} ${i + 1} · ${cl.title}`, sub: cl.date,
                     extra: <Link to={`/games/${cl.gameId}?t=${cl.t}&r=${cl.s}`} className="shrink-0 text-xs text-muted underline">in game</Link>,
                   }];
@@ -241,6 +252,10 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
           ) : <p className="mt-1 text-sm text-muted">None yet.</p>}
         </div>
       )}
+      {star && games && (() => {
+        const g = games.find(x => x.id === star.gameId);
+        return g && <HighlightDialog game={g} rally={star} players={players ?? []} forPlayer={playerId} onClose={() => setStar(null)} />;
+      })()}
     </section>
   );
 }
@@ -294,7 +309,10 @@ export function Highlights({ playerId, name, sample }: { playerId: string; name:
   return (
     <section className="rounded-xl border border-line bg-surface p-4">
       <h2 className="mb-2 font-display text-lg font-semibold">★ Highlights <span className="text-sm font-normal text-muted">({list.length})</span></h2>
-      <ClipReel clips={list.map(h => ({
+      <ClipReel nowPlaying={c => {
+        const h = list.find(x => x.id === c.key);
+        return h && <ShareRally gameId={h.gameId} rally={h} title={`${h.title} · ${h.note || `rally at ${fmtTime(h.s)}`}`} />;
+      }} clips={list.map(h => ({
         key: h.id, youtubeId: h.youtubeId, s: h.s, e: h.e,
         label: h.note || `Rally at ${fmtTime(h.s)}`,
         sub: `${h.title} · ${fmtDate(h.date)}${h.by !== me && h.byName ? ` · added by ${h.byName.split(' ')[0]}` : ''}`,

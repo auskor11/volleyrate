@@ -16,13 +16,14 @@ import { useEngineSettings } from '../lib/rated';
 import { createBackup } from '../lib/backups';
 import { CATEGORIES, overall } from '../lib/ratings';
 import { logHistory, setGameRating, useGames, useHistory } from '../lib/games';
-import { addHighlight, useHighlights } from '../lib/highlights';
+import { useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
 import {
   BACK_COURT_PLAYERS, ROLE_NAMES, TEAMS, assignMiddles, courtFor, guestServes, likelyLibero, sameCourt, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
   scoreSheet, server, setupReady, startCourt,
   type CourtSetup, type CourtState, type CourtView, type Team,
 } from '../lib/rotation';
+import { HighlightDialog, ShareRally } from '../components/RallyActions';
 import { Court } from '../components/Court';
 
 const STATUS: Record<Rally['st'], { label: string; cls: string }> = {
@@ -815,7 +816,7 @@ export function GamePlayer({ game, canDelete, samplePlayers }: { game: Game; can
           <span className="flex items-center gap-2 font-medium">
             {rally ? <>Rally {cur + 1} · {fmtTime(rally.s)}–{fmtTime(rally.e)}
               <button onClick={() => setHighlighting(true)} className="rounded-md border border-ball/50 px-2 py-0.5 text-xs font-semibold text-ball">★ Highlight</button>
-              <ShareRally game={game} rally={rally} n={cur + 1} />
+              <ShareRally gameId={game.id} rally={rally} title={`${game.title} · rally ${cur + 1}`} />
             </> : <span className="text-muted">Tap a rally to play it</span>}
           </span>
           <span className="text-xs text-muted">
@@ -1309,51 +1310,6 @@ function HistoryDialog({ gameId, onClose }: { gameId: string; onClose: () => voi
 }
 
 /** Bookmark the whole rally to a player's profile (default: yourself). */
-function HighlightDialog({ game, rally, players, onClose }: { game: Game; rally: Rally; players: Player[]; onClose: () => void }) {
-  const auth = useAuth();
-  const mine = auth?.member?.playerId ?? '';
-  const [pid, setPid] = useState(mine || players[0]?.id || '');
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
-  const save = async () => {
-    if (!pid) return;
-    setBusy(true);
-    const user = auth?.user;
-    await addHighlight({
-      playerId: pid, gameId: game.id, youtubeId: game.youtubeId, title: game.title, date: game.date,
-      s: rally.s, e: rally.e, note: note.trim(),
-      by: (user?.email ?? '').toLowerCase(), byName: user?.displayName ?? user?.email ?? '',
-    });
-    const who = players.find(p => p.id === pid)?.name ?? pid;
-    logHistory(game.id, user ?? null, [`Rally ${fmtTime(rally.s)}: saved as a highlight for ${who}${note.trim() ? ` ("${note.trim()}")` : ''}`]).catch(() => {});
-    onClose();
-  };
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-t-2xl border border-line bg-surface p-4 sm:rounded-2xl" onClick={e => e.stopPropagation()}>
-        <h2 className="font-semibold">★ Save highlight</h2>
-        <p className="mt-1 text-sm text-muted">The whole rally ({fmtTime(rally.s)}–{fmtTime(rally.e)}) goes on this player's profile.</p>
-        <label className="mt-3 block text-sm">For
-          <select value={pid} onChange={e => setPid(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-line bg-raised px-3 py-2 text-ink outline-none focus:border-ball">
-            {players.map(p => <option key={p.id} value={p.id}>{p.name}{p.id === mine ? ' (me)' : ''}</option>)}
-          </select>
-        </label>
-        <label className="mt-3 block text-sm">Note (optional)
-          <input value={note} onChange={e => setNote(e.target.value)} maxLength={80} placeholder="e.g. cross-court kill off the block"
-            className="mt-1 w-full rounded-lg border border-line bg-raised px-3 py-2 text-ink outline-none focus:border-ball" />
-        </label>
-        <div className="mt-4 flex gap-2">
-          <button onClick={save} disabled={busy || !pid} className="flex-1 rounded-lg bg-ball py-2.5 font-semibold text-bg disabled:opacity-40">
-            {busy ? 'Saving…' : 'Save highlight'}
-          </button>
-          <button onClick={onClose} className="rounded-lg border border-line px-4 py-2.5">Cancel</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const POS_NAMES = ['back right', 'front right', 'front middle', 'front left', 'back left', 'back middle'];
 
 /** First empty starting spot (positions 1 → 6, team A first unless told otherwise), else that team's subs. */
@@ -1675,23 +1631,3 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
   );
 }
 
-/** Share a link that opens this game and plays this rally (for anyone on the team: they still sign in). */
-function ShareRally({ game, rally, n }: { game: Game; rally: Rally; n: number }) {
-  const [copied, setCopied] = useState(false);
-  const share = async () => {
-    const url = `${location.origin}/games/${game.id}?t=${rally.s}&r=${rally.s}`;
-    const title = `${game.title} · rally ${n}`;
-    // phones: the share sheet (WhatsApp, Telegram, …); computers: copy the link
-    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
-      try { await navigator.share({ title, text: title, url }); return; } catch (e) { if ((e as Error).name === 'AbortError') return; }
-    }
-    try { await navigator.clipboard.writeText(url); } catch { prompt('Copy this link', url); return; }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-  return (
-    <button onClick={share} className="rounded-md border border-line px-2 py-0.5 text-xs font-semibold text-ink">
-      {copied ? '✓ Link copied' : '↗ Share'}
-    </button>
-  );
-}
