@@ -78,3 +78,12 @@ body {
 [data-ui="clean"] .card-num { opacity: 1; color: var(--color-muted); font-size: 1rem; font-weight: 500; }
 /* game page on a big screen: no top bar or bottom tabs in Clean, so the video and lists can use the full height */
 @media (min-width: 1024px) { [data-ui="clean"] .game-fill { height: calc(100dvh - 2rem); } }
+/* pieces drawn only in one look (faces appear in Clean) */
+:root:not([data-ui="clean"]) .clean-only { display: none !important; }
+[data-ui="clean"] .classic-only { display: none !important; }
+/* game page header on phones: title on its own line, small buttons under it */
+@media (max-width: 639px) {
+  [data-ui="clean"] .game-head { flex-wrap: wrap; gap: 0.25rem 0.5rem; }
+  [data-ui="clean"] .game-head > :first-child { flex-basis: 100%; }
+  [data-ui="clean"] .game-head > button { margin-top: 0; padding: 0.25rem 0.625rem; font-size: 0.75rem; }
+}

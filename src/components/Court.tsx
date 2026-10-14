@@ -2,6 +2,7 @@
 // middle, subs on the left. Drag a name onto another to swap them (or tap one, then the other): roles stay
 // with the spots, so swapped players swap roles and a sub takes over the role of the player they replace.
 // "Keep roles" swaps instead move the players with their roles (for teams that stood in the wrong spots).
+import { Avatar } from './Avatar';
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { ROLE_NAMES, TEAMS, placeSpecialists, roleAt, rotate, rotateBack, rotationOf, type CourtState, type Side, type Team } from '../lib/rotation';
 
@@ -53,7 +54,8 @@ export function moveSlot(c: CourtState, from: string, to: string, allowEmpty: bo
   return n;
 }
 
-export function Court({ c, name, onChange, onSlot, target, allowEmpty = false, controls = false }: {
+export function Court({ c, name, photo, onChange, onSlot, target, allowEmpty = false, controls = false }: {
+  photo?: (id: string) => string | undefined;  // face photos (shown in the Clean look)
   c: CourtState;
   name: (id: string) => string;
   onChange?: (c: CourtState, what?: string) => void;  // what: a short description for the edit history
@@ -113,6 +115,7 @@ export function Court({ c, name, onChange, onSlot, target, allowEmpty = false, c
           ${hl ? 'border-court bg-court/25 ring-2 ring-court' : serving ? 'border-ball bg-ball/20 text-ball' : id ? 'border-line bg-raised' : 'border-dashed border-line text-muted'}
           ${editable || onSlot ? 'cursor-pointer' : ''} ${ghost?.key === key ? 'opacity-40' : ''}`}>
         <div className={`text-[9px] ${serving ? 'text-ball' : 'text-muted'}`}>{label}</div>
+        {id && photo?.(id) && <div className="clean-only my-0.5 flex justify-center"><Avatar name={name(id)} photo={photo(id)} size={22} ring={0} /></div>}
         <div className="truncate font-semibold">{id ? name(id) : onSlot ? 'tap' : '—'}</div>
         {role && <div className="text-[9px] text-muted">{role}</div>}
       </div>

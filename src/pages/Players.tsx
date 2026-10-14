@@ -77,8 +77,16 @@ export function PlayerDetail() {
       )}
       {photo && <PhotoEditor player={p} onClose={() => setPhoto(false)} />}
       <section className="rounded-xl border border-line bg-surface p-3">
-        <p className="text-xs text-muted">Overall at each position (tap to see the ratings weighted that way)</p>
-        <div className="mt-2 grid grid-cols-5 gap-1.5">
+        <p className="text-xs text-muted">Overall at each position (tap one to see the ratings weighted that way)</p>
+        <div className="clean-only mt-2 flex flex-wrap gap-1.5">
+          {(Object.keys(POSITIONS) as Position[]).map(k => (
+            <button key={k} onClick={() => setAs(k === main ? null : k)} title={POSITIONS[k]}
+              className={`rounded-full border px-3 py-1 text-sm tabular-nums ${pos === k ? 'border-ball bg-ball/20 font-semibold text-ball' : 'border-line text-ink'}`}>
+              {k} <b className="font-semibold">{overall(p.ratings, k) ?? 'NR'}</b>{p.positions.includes(k) && <span className="ml-0.5 text-muted">✓</span>}
+            </button>
+          ))}
+        </div>
+        <div className="classic-only mt-2 grid grid-cols-5 gap-1.5">
           {(Object.keys(POSITIONS) as Position[]).map(k => {
             const o = overall(p.ratings, k);
             return (

@@ -24,6 +24,7 @@ import {
   type CourtSetup, type CourtState, type CourtView, type Team,
 } from '../lib/rotation';
 import { HighlightDialog, ShareRally } from '../components/RallyActions';
+import { Avatar } from '../components/Avatar';
 import { Court } from '../components/Court';
 
 const STATUS: Record<Rally['st'], { label: string; cls: string }> = {
@@ -291,7 +292,8 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
             {sorted.map((pl, i) => (
               <button key={pl.id} onClick={() => addTouch(pl.id)}
                 className="flex items-center justify-between gap-1 rounded-lg border border-line bg-raised px-2 py-2 text-left text-sm font-semibold active:scale-[0.97] active:border-ball">
-                <span className="truncate">{pl.name}</span>
+                {pl.photo && <span className="clean-only"><Avatar name={pl.name} photo={pl.photo} size={22} ring={0} /></span>}
+                <span className="min-w-0 flex-1 truncate">{pl.name}</span>
                 <span className="shrink-0 text-xs text-muted">{pl.number !== null ? `#${pl.number}` : ''}{PLAYER_KEYS[i] && <Kbd k={PLAYER_KEYS[i]} />}</span>
               </button>
             ))}
@@ -753,10 +755,10 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
 
   // Fills the screen: phone = video on top + list scrolling below; wide screen = video left, list right.
   return (
-    <div className={`game-fill flex h-[calc(100dvh-11.5rem-env(safe-area-inset-top))] flex-col gap-3 lg:grid lg:gap-5 ${showCourt
+    <div className={`game-fill flex h-[calc(100dvh-11.5rem-env(safe-area-inset-top))] flex-col gap-3 lg:grid lg:gap-5 ${mode === 'box' ? 'max-lg:!h-auto' : ''} ${showCourt
       ? 'lg:grid-cols-[minmax(0,1.9fr)_minmax(280px,1fr)_minmax(230px,0.75fr)]' : 'lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]'}`}>
       <div className={`shrink-0 space-y-2 ${mode === 'tag' ? 'lg:flex lg:min-h-0 lg:flex-col lg:gap-2 lg:space-y-0 lg:overflow-y-auto' : 'lg:overflow-y-auto'}`}>
-        <div className="flex items-start gap-3">
+        <div className="game-head flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <Link to="/games" className="text-sm text-muted">← Games</Link>
             <h1 className="truncate font-display text-2xl font-bold">{game.title}</h1>
@@ -962,7 +964,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
               Rotation{view ? <>{rally && scoreAt.get(rally) && <> · <b className="text-ink">A {scoreAt.get(rally)!.before.a}–{scoreAt.get(rally)!.before.b} B</b></>}: 🏐 <b className="text-ink">{name(server(view.state))}</b> serves for Team {view.state.serving.toUpperCase()}</> : teamsReady ? '' : ': teams not set up yet'}
             </summary>
             <div className="mx-auto mt-2 max-w-[17rem]">
-              <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={openTeams} onEditRally={openTeamsFrom}
+              <RotationPanel view={view} setup={setup} name={name} photo={id => players?.find(p => p.id === id)?.photo} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={openTeams} onEditRally={openTeamsFrom}
               score={rally ? scoreAt.get(rally)?.before : undefined} missed={rally ? notCounted(liveRallies.indexOf(rally)) : 0} />
             </div>
           </details>
@@ -997,7 +999,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
       {showCourt && (
         <div className="hidden min-h-0 overflow-y-auto lg:block">
           <div className="rounded-xl border border-line bg-surface p-2">
-            <RotationPanel view={view} setup={setup} name={name} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={openTeams} onEditRally={openTeamsFrom}
+            <RotationPanel view={view} setup={setup} name={name} photo={id => players?.find(p => p.id === id)?.photo} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={openTeams} onEditRally={openTeamsFrom}
               score={rally ? scoreAt.get(rally)?.before : undefined} missed={rally ? notCounted(liveRallies.indexOf(rally)) : 0} />
           </div>
         </div>
@@ -1007,8 +1009,8 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
 }
 
 /** The live court for the rally being tagged: checked by the reviewer, fixed by dragging or rotating. */
-function RotationPanel({ view, setup, name, tagged, notRally, onChange, onSetup, onEditRally, score, missed }: {
-  view: CourtView | null; setup: CourtSetup | null; name: (id?: string) => string; tagged: boolean; notRally?: boolean;
+function RotationPanel({ view, setup, name, photo, tagged, notRally, onChange, onSetup, onEditRally, score, missed }: {
+  view: CourtView | null; setup: CourtSetup | null; name: (id?: string) => string; photo?: (id: string) => string | undefined; tagged: boolean; notRally?: boolean;
   score?: { a: number; b: number }; missed: number;  // score before this rally; earlier rallies left out of it
   onChange: (c: CourtState, what: string, manual?: boolean) => void; onSetup: () => void; onEditRally: () => void;
 }) {
@@ -1040,7 +1042,7 @@ function RotationPanel({ view, setup, name, tagged, notRally, onChange, onSetup,
           </div>
         </div>
       )}
-      <Court c={shown} name={id => name(id)} controls={!!view}
+      <Court c={shown} name={id => name(id)} photo={photo} controls={!!view}
         onChange={view ? (c, what) => onChange(c, what ?? 'changed the court') : undefined} />
       {view?.mismatch && (
         <button onClick={() => onChange(view.derived, 'undid the court changes', false)}
@@ -1144,7 +1146,9 @@ function BoxScore({ game, players }: { game: Game; players: Player[] }) {
         <tbody>
           {rows.map(({ id, name, c }) => (
             <tr key={id} className="border-t border-line">
-              <td className="sticky left-0 bg-surface px-3 py-1.5 font-medium whitespace-nowrap">{name}</td>
+              <td className="sticky left-0 bg-surface px-3 py-1.5 font-medium whitespace-nowrap">
+                {players.find(p => p.id === id)?.photo && <span className="clean-only mr-2 align-middle"><Avatar name={name} photo={players.find(p => p.id === id)?.photo} size={20} ring={0} /></span>}{name}
+              </td>
               {BOX.map(([h, , f], i) => (
                 <td key={h} className={`px-1.5 py-1.5 text-right ${i === 0 ? 'font-bold text-ball' : ''} ${f(c) === 0 ? 'text-muted/50' : ''}`}>{f(c)}</td>
               ))}
@@ -1463,7 +1467,7 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
           <SetupVideo {...video} />
           <p className="text-[11px] text-muted">Pause on the first serve: the server is at position 1. Then go round anticlockwise.</p>
           <div className="mx-auto w-full max-w-[17rem]">
-            <Court c={c} name={name} allowEmpty target={target}
+            <Court c={c} name={name} photo={id => players.find(p => p.id === id)?.photo} allowEmpty target={target}
               onSlot={k => setTarget(k)} onChange={x => setC(tidy({ ...c, ...x }))} />
           </div>
         </div>
