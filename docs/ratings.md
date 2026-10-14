@@ -200,6 +200,6 @@ ratings above.
   Everyone else gets a medal: **Gold** from 7.5, **Silver** from 6.0, otherwise **Bronze**.
 - **Titles:** the game's outright leader (at least 2) in kills, aces, block points, assists ("Playmaker") or digs,
   and "N in a row" for a player credited with the point in 3 or more rallies running.
-- **Session MVP** (on the session recap): the best average game rating that Saturday among players who played at
-  least half the games.
+- **Session ratings** (on the session recap): each player's average game rating that Saturday, ranked, with the
+  same medal cut-offs. **Session MVP** is the best average among players who played at least half the games.
 - Guests are left out.

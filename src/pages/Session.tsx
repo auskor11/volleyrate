@@ -9,7 +9,7 @@ import { fmtDay, useRatingHistory } from '../lib/history';
 import { Avatar } from '../components/Avatar';
 import { ClipReel } from '../components/ClipReel';
 import { MEDAL_COLOR, MedalBadge } from '../components/MatchCard';
-import { matchRatings } from '../lib/gameRating';
+import { GAME_RATING, matchRatings, type Medal } from '../lib/gameRating';
 
 const LEADERS: { k: StatKey; label: string }[] = [
   { k: 'kill', label: 'Kills' }, { k: 'ace', label: 'Aces' }, { k: 'assist', label: 'Assists' },
@@ -51,14 +51,20 @@ export function Session() {
   const top = (s: StatKey) => Object.entries(stats).map(([id, st]) => ({ id, n: st[s].length })).filter(x => x.n > 0).sort((a, b) => b.n - a.n);
   // game ratings: each game's MVP, and the session MVP (best average over the games they played; at least half)
   const matches = dayGames.flatMap(g => { const result = matchRatings(g); return result ? [{ game: g, result }] : []; });
-  const per: Record<string, { sum: number; n: number; mvps: number }> = {};
+  const per: Record<string, { sum: number; n: number; mvps: number; loseMvps: number }> = {};
   for (const { result } of matches) for (const r of result.rows) {
-    const x = (per[r.id] ??= { sum: 0, n: 0, mvps: 0 });
-    x.sum += r.score; x.n++; if (r.medal === 'mvp') x.mvps++;
+    const x = (per[r.id] ??= { sum: 0, n: 0, mvps: 0, loseMvps: 0 });
+    x.sum += r.score; x.n++; if (r.medal === 'mvp') x.mvps++; if (r.medal === 'mvp-lose') x.loseMvps++;
   }
   const sessionMvp = Object.entries(per).filter(([, x]) => x.n * 2 >= matches.length)
     .map(([id, x]) => ({ id, avg: x.sum / x.n, n: x.n, mvps: x.mvps }))
     .sort((a, b) => b.avg - a.avg || b.mvps - a.mvps)[0];
+  // session ratings: everyone's average game rating today, medals by the same cut-offs, Session MVP on top
+  const board = Object.entries(per).map(([id, x]) => {
+    const avg = Math.round((x.sum / x.n) * 10) / 10;
+    const medal: Medal = id === sessionMvp?.id ? 'mvp' : avg >= GAME_RATING.medals.gold ? 'gold' : avg >= GAME_RATING.medals.silver ? 'silver' : 'bronze';
+    return { id, avg, n: x.n, mvps: x.mvps, loseMvps: x.loseMvps, medal, short: x.n * 2 < matches.length };
+  }).sort((a, b) => (b.medal === 'mvp' ? 1 : 0) - (a.medal === 'mvp' ? 1 : 0) || b.avg - a.avg || b.mvps - a.mvps);
   const rallies = dayGames.reduce((n, g) => n + g.rallies.filter(r => r.st !== 'bad').length, 0);
   // "All": every rally won by a kill, ace, block or set over, once each (a kill's assist is in its label)
   const compilation = dayGames.flatMap(g => {
@@ -120,34 +126,32 @@ export function Session() {
         </section>
       )}
 
-      {movers.length > 0 && (
+      {board.length > 0 && (
         <section className={card}>
-          <h2 className="font-semibold">Ratings this session</h2>
-          {movers[0].d > 0 && (
-            <div className="mt-3 flex items-center gap-3 rounded-lg bg-raised p-3">
-              <Avatar name={name(movers[0].id)} photo={photo(movers[0].id)} tier={tier(movers[0].after)} size={48} />
-              <div className="min-w-0 flex-1">
-                <div className="text-xs text-muted">Biggest riser</div>
-                <Link to={`/players/${movers[0].id}`} className="font-semibold">{name(movers[0].id)}</Link>
-              </div>
-              <div className="text-right tabular-nums"><span className="text-muted">{movers[0].before} →</span> <b className="text-lg">{movers[0].after}</b> <span className="text-good">▲{movers[0].d}</span></div>
-            </div>
-          )}
-          <ul className="mt-2 divide-y divide-line text-sm">
-            {movers.map(m => (
-              <li key={m.id}>
-                <Link to={`/players/${m.id}`} className="flex items-center gap-3 py-2">
-                  <Avatar name={name(m.id)} photo={photo(m.id)} tier={tier(m.after)} size={28} ring={1.5} />
-                  <span className="flex-1">{name(m.id)}</span>
-                  <span className="tabular-nums text-muted">{m.before} → <b className="text-ink">{m.after}</b></span>
-                  <span className={`w-10 text-right tabular-nums ${m.d > 0 ? 'text-good' : m.d < 0 ? 'text-bad' : 'text-muted'}`}>{m.d > 0 ? `▲${m.d}` : m.d < 0 ? `▼${-m.d}` : '–'}</span>
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="font-semibold">Session ratings</h2>
+            <span className="text-[11px] text-muted">average game rating today</span>
+          </div>
+          <ol className="mt-2 space-y-0.5 text-sm">
+            {board.map((x, i) => (
+              <li key={x.id}>
+                <Link to={`/players/${x.id}`} className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 ${x.medal === 'mvp' ? 'bg-raised' : ''}`}
+                  style={x.medal === 'mvp' ? { boxShadow: `inset 3px 0 0 ${MEDAL_COLOR.mvp}` } : undefined}>
+                  <span className="w-4 text-right text-xs text-muted tabular-nums">{i + 1}</span>
+                  <Avatar name={name(x.id)} photo={photo(x.id)} size={28} ring={0} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{name(x.id)}</span>
+                    <span className="block truncate text-[11px] text-muted">
+                      {x.n} of {matches.length} game{matches.length === 1 ? '' : 's'}{x.mvps ? ` · 👑 ${x.mvps}` : ''}{x.loseMvps ? ` · MVP (lose) ${x.loseMvps}` : ''}{x.short ? ' · too few games for MVP' : ''}
+                    </span>
+                  </span>
+                  <MedalBadge m={x.medal} score={x.avg} />
                 </Link>
               </li>
             ))}
-          </ul>
+          </ol>
         </section>
       )}
-      {k < 0 && <p className={`${card} text-sm text-muted`}>This session's games aren't in the ratings yet (not tagged, or not applied by an admin).</p>}
 
       <section>
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">Session leaders</h2>
@@ -193,6 +197,35 @@ export function Session() {
         </ul>
       </section>
 
+
+      {movers.length > 0 && (
+        <section className={card}>
+          <h2 className="font-semibold">Ratings this session</h2>
+          {movers[0].d > 0 && (
+            <div className="mt-3 flex items-center gap-3 rounded-lg bg-raised p-3">
+              <Avatar name={name(movers[0].id)} photo={photo(movers[0].id)} tier={tier(movers[0].after)} size={48} />
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-muted">Biggest riser</div>
+                <Link to={`/players/${movers[0].id}`} className="font-semibold">{name(movers[0].id)}</Link>
+              </div>
+              <div className="text-right tabular-nums"><span className="text-muted">{movers[0].before} →</span> <b className="text-lg">{movers[0].after}</b> <span className="text-good">▲{movers[0].d}</span></div>
+            </div>
+          )}
+          <ul className="mt-2 divide-y divide-line text-sm">
+            {movers.map(m => (
+              <li key={m.id}>
+                <Link to={`/players/${m.id}`} className="flex items-center gap-3 py-2">
+                  <Avatar name={name(m.id)} photo={photo(m.id)} tier={tier(m.after)} size={28} ring={1.5} />
+                  <span className="flex-1">{name(m.id)}</span>
+                  <span className="tabular-nums text-muted">{m.before} → <b className="text-ink">{m.after}</b></span>
+                  <span className={`w-10 text-right tabular-nums ${m.d > 0 ? 'text-good' : m.d < 0 ? 'text-bad' : 'text-muted'}`}>{m.d > 0 ? `▲${m.d}` : m.d < 0 ? `▼${-m.d}` : '–'}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {k < 0 && <p className={`${card} text-sm text-muted`}>This session's games aren't in the ratings yet (not tagged, or not applied by an admin).</p>}
     </div>
   );
 }
