@@ -24,6 +24,7 @@ import {
   type CourtSetup, type CourtState, type CourtView, type Team,
 } from '../lib/rotation';
 import { HighlightDialog, ShareRally } from '../components/RallyActions';
+import { AutoplaySwitch, useAutoplay } from '../components/ClipReel';
 import { Avatar } from '../components/Avatar';
 import { MatchCard } from '../components/MatchCard';
 import { matchRatings } from '../lib/gameRating';
@@ -348,7 +349,8 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
   const players = samplePlayers ?? dbPlayers;  // samplePlayers: dev preview only
   const [rallies, setRallies] = useState<Rally[]>([]);
   const [cur, setCur] = useState(-1);
-  const [playAll, setPlayAll] = useState(false);
+  const [autoplay, setAutoplay] = useAutoplay();  // Watch / Box score: carry on to the next rally (same setting as playlists)
+  const playAll = autoplay && (mode === 'watch' || mode === 'box');
   const [saveState, setSaveState] = useState<'' | 'saving' | 'saved' | 'error'>('');
   const playerEl = useRef<HTMLDivElement>(null);
   const listEl = useRef<HTMLOListElement>(null);
@@ -839,10 +841,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
             <button className={btn} disabled={cur <= 0} onClick={() => go(cur - 1)}>◀ Prev</button>
             <button className={btn} disabled={!rally} onClick={() => go(cur)}>↺ Replay</button>
             <button className={btn} disabled={cur >= list.length - 1} onClick={() => go(cur + 1)}>Next ▶</button>
-            <button className={`${btn} ${playAll ? 'border-ball text-ball' : ''}`}
-              onClick={() => { setPlayAll(!playAll); if (!playAll && cur < 0) go(0); }}>
-              {playAll ? '⏸ All' : '▶ All'}
-            </button>
+            <AutoplaySwitch on={autoplay} onChange={v => { setAutoplay(v); if (v && cur < 0) go(0); }} className="py-2.5 text-sm font-semibold" />
           </div>
         ) : mode === 'tag' ? (
           <>
@@ -923,7 +922,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
       <div className="flex min-h-0 flex-1 flex-col gap-2">
         <div className="flex shrink-0 gap-1 rounded-xl bg-surface p-1">
           {(canEdit ? ['watch', 'review', 'tag', 'box'] as const : ['watch', 'box'] as const).map(m => (
-            <button key={m} onClick={() => { setMode(m); setCur(-1); setPlayAll(false); }}
+            <button key={m} onClick={() => { setMode(m); setCur(-1); }}
               className={`flex-1 rounded-lg py-2 text-sm font-semibold ${mode === m ? 'bg-raised text-ink' : 'text-muted'}`}>
               {m === 'watch' ? 'Watch' : m === 'review' ? 'Review' : m === 'tag' ? 'Tag' : 'Box score'}
               {m === 'review' && unchecked ? <span className="font-normal"> ({unchecked})</span> : null}

@@ -17,6 +17,31 @@ export interface ReelClip {
 
 /** `nowPlaying`: buttons for the clip that's playing (highlight, share, …), shown under the video. */
 const AUTO = 'volleyrate.autoplay';
+const autoListeners = new Set<(on: boolean) => void>();
+const savedAuto = () => { try { return localStorage.getItem(AUTO) !== 'off'; } catch { return true; } };
+
+/** Autoplay: after a clip or rally ends, play the next one. One setting for every playlist and game page (per device). */
+export function useAutoplay(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(savedAuto);
+  useEffect(() => { autoListeners.add(setOn); return () => { autoListeners.delete(setOn); }; }, []);
+  const set = (v: boolean) => {
+    try { localStorage.setItem(AUTO, v ? 'on' : 'off'); } catch { /* storage blocked */ }
+    autoListeners.forEach(f => f(v));
+  };
+  return [on, set];
+}
+
+export function AutoplaySwitch({ on, onChange, className = '' }: { on: boolean; onChange: (on: boolean) => void; className?: string }) {
+  return (
+    <button onClick={() => onChange(!on)} role="switch" aria-checked={on} title="After a clip ends, play the next one"
+      className={`flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${on ? 'border-ball/60 text-ball' : 'border-line text-muted'} ${className}`}>
+      <span className={`relative inline-block h-3.5 w-6 shrink-0 rounded-full transition ${on ? 'bg-ball' : 'bg-line'}`}>
+        <span className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-bg transition-all ${on ? 'left-3' : 'left-0.5'}`} />
+      </span>
+      Autoplay
+    </button>
+  );
+}
 
 export function ClipReel({ clips, autoStart = false, nowPlaying }: { clips: ReelClip[]; autoStart?: boolean; nowPlaying?: (c: ReelClip) => ReactNode }) {
   const [cur, setCur] = useState<number | null>(null);
@@ -46,11 +71,10 @@ export function ClipReel({ clips, autoStart = false, nowPlaying }: { clips: Reel
   }
   const startReel = (from = 0) => { setReel(true); state.current.reel = true; play(from); };
   // Autoplay: after a clip you picked, carry on with the next one (remembered on this device)
-  const [auto, setAuto] = useState(() => { try { return localStorage.getItem(AUTO) !== 'off'; } catch { return true; } });
+  const [auto, setAuto] = useAutoplay();
   const toggleAuto = () => {
     const on = !auto;
     setAuto(on);
-    try { localStorage.setItem(AUTO, on ? 'on' : 'off'); } catch { /* storage blocked */ }
     if (state.current.cur !== null) { setReel(on); state.current.reel = on; }  // applies to the clip playing now
   };
   const stopReel = () => { setReel(false); state.current.reel = false; };
@@ -93,13 +117,7 @@ export function ClipReel({ clips, autoStart = false, nowPlaying }: { clips: Reel
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-muted">{c ? `${reel ? `${cur! + 1} of ${clips.length} · ` : ''}${c.sub}` : `${clips.length} clip${clips.length === 1 ? '' : 's'}`}</span>
         <span className="flex shrink-0 items-center gap-1.5">
-          <button onClick={toggleAuto} role="switch" aria-checked={auto} title="After a clip ends, play the next one"
-            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${auto ? 'border-ball/60 text-ball' : 'border-line text-muted'}`}>
-            <span className={`relative inline-block h-3.5 w-6 rounded-full transition ${auto ? 'bg-ball' : 'bg-line'}`}>
-              <span className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-bg transition-all ${auto ? 'left-3' : 'left-0.5'}`} />
-            </span>
-            Autoplay
-          </button>
+          <AutoplaySwitch on={auto} onChange={toggleAuto} />
           {reel
             ? <button onClick={() => { stopReel(); yt.current?.pauseVideo(); }} className="rounded-lg border border-ball px-3 py-1.5 text-sm font-semibold text-ball">⏹ Stop</button>
             : <button onClick={() => startReel()} className="rounded-lg bg-ball px-3 py-1.5 text-sm font-semibold text-bg">▶ Play all</button>}
