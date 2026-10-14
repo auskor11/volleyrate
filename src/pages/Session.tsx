@@ -51,10 +51,11 @@ export function Session() {
   const top = (s: StatKey) => Object.entries(stats).map(([id, st]) => ({ id, n: st[s].length })).filter(x => x.n > 0).sort((a, b) => b.n - a.n);
   // game ratings: each game's MVP, and the session MVP (best average over the games they played; at least half)
   const matches = dayGames.flatMap(g => { const result = matchRatings(g); return result ? [{ game: g, result }] : []; });
-  const per: Record<string, { sum: number; n: number; mvps: number; loseMvps: number }> = {};
+  // (no "MVP (lose)" here: teams can change from game to game within a session)
+  const per: Record<string, { sum: number; n: number; mvps: number }> = {};
   for (const { result } of matches) for (const r of result.rows) {
-    const x = (per[r.id] ??= { sum: 0, n: 0, mvps: 0, loseMvps: 0 });
-    x.sum += r.score; x.n++; if (r.medal === 'mvp') x.mvps++; if (r.medal === 'mvp-lose') x.loseMvps++;
+    const x = (per[r.id] ??= { sum: 0, n: 0, mvps: 0 });
+    x.sum += r.score; x.n++; if (r.medal === 'mvp') x.mvps++;
   }
   const sessionMvp = Object.entries(per).filter(([, x]) => x.n * 2 >= matches.length)
     .map(([id, x]) => ({ id, avg: x.sum / x.n, n: x.n, mvps: x.mvps }))
@@ -63,7 +64,7 @@ export function Session() {
   const board = Object.entries(per).map(([id, x]) => {
     const avg = Math.round((x.sum / x.n) * 10) / 10;
     const medal: Medal = id === sessionMvp?.id ? 'mvp' : avg >= GAME_RATING.medals.gold ? 'gold' : avg >= GAME_RATING.medals.silver ? 'silver' : 'bronze';
-    return { id, avg, n: x.n, mvps: x.mvps, loseMvps: x.loseMvps, medal, short: x.n * 2 < matches.length };
+    return { id, avg, n: x.n, mvps: x.mvps, medal, short: x.n * 2 < matches.length };
   }).sort((a, b) => (b.medal === 'mvp' ? 1 : 0) - (a.medal === 'mvp' ? 1 : 0) || b.avg - a.avg || b.mvps - a.mvps);
   const rallies = dayGames.reduce((n, g) => n + g.rallies.filter(r => r.st !== 'bad').length, 0);
   // "All": every rally won by a kill, ace, block or set over, once each (a kill's assist is in its label)
@@ -142,7 +143,7 @@ export function Session() {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold">{name(x.id)}</span>
                     <span className="block truncate text-[11px] text-muted">
-                      {x.n} of {matches.length} game{matches.length === 1 ? '' : 's'}{x.mvps ? ` · 👑 ${x.mvps}` : ''}{x.loseMvps ? ` · MVP (lose) ${x.loseMvps}` : ''}{x.short ? ' · too few games for MVP' : ''}
+                      {x.n} of {matches.length} game{matches.length === 1 ? '' : 's'}{x.mvps ? ` · 👑 ${x.mvps}` : ''}{x.short ? ' · too few games for MVP' : ''}
                     </span>
                   </span>
                   <MedalBadge m={x.medal} score={x.avg} />
