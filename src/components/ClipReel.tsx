@@ -16,6 +16,8 @@ export interface ReelClip {
 }
 
 /** `nowPlaying`: buttons for the clip that's playing (highlight, share, …), shown under the video. */
+const AUTO = 'volleyrate.autoplay';
+
 export function ClipReel({ clips, autoStart = false, nowPlaying }: { clips: ReelClip[]; autoStart?: boolean; nowPlaying?: (c: ReelClip) => ReactNode }) {
   const [cur, setCur] = useState<number | null>(null);
   const [reel, setReel] = useState(false);
@@ -42,7 +44,15 @@ export function ClipReel({ clips, autoStart = false, nowPlaying }: { clips: Reel
       yt.current.loadVideoById({ videoId: c.youtubeId, startSeconds: Math.max(0, c.s - 0.5) });
     }
   }
-  const startReel = () => { setReel(true); state.current.reel = true; play(0); };
+  const startReel = (from = 0) => { setReel(true); state.current.reel = true; play(from); };
+  // Autoplay: after a clip you picked, carry on with the next one (remembered on this device)
+  const [auto, setAuto] = useState(() => { try { return localStorage.getItem(AUTO) !== 'off'; } catch { return true; } });
+  const toggleAuto = () => {
+    const on = !auto;
+    setAuto(on);
+    try { localStorage.setItem(AUTO, on ? 'on' : 'off'); } catch { /* storage blocked */ }
+    if (state.current.cur !== null) { setReel(on); state.current.reel = on; }  // applies to the clip playing now
+  };
   const stopReel = () => { setReel(false); state.current.reel = false; };
   // move to the next clip in the reel (once per clip), or finish
   function next() {
@@ -82,9 +92,18 @@ export function ClipReel({ clips, autoStart = false, nowPlaying }: { clips: Reel
     <div>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-muted">{c ? `${reel ? `${cur! + 1} of ${clips.length} · ` : ''}${c.sub}` : `${clips.length} clip${clips.length === 1 ? '' : 's'}`}</span>
-        {reel
-          ? <button onClick={() => { stopReel(); yt.current?.pauseVideo(); }} className="rounded-lg border border-ball px-3 py-1.5 text-sm font-semibold text-ball">⏹ Stop</button>
-          : <button onClick={startReel} className="rounded-lg bg-ball px-3 py-1.5 text-sm font-semibold text-bg">▶ Play all</button>}
+        <span className="flex shrink-0 items-center gap-1.5">
+          <button onClick={toggleAuto} role="switch" aria-checked={auto} title="After a clip ends, play the next one"
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${auto ? 'border-ball/60 text-ball' : 'border-line text-muted'}`}>
+            <span className={`relative inline-block h-3.5 w-6 rounded-full transition ${auto ? 'bg-ball' : 'bg-line'}`}>
+              <span className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-bg transition-all ${auto ? 'left-3' : 'left-0.5'}`} />
+            </span>
+            Autoplay
+          </button>
+          {reel
+            ? <button onClick={() => { stopReel(); yt.current?.pauseVideo(); }} className="rounded-lg border border-ball px-3 py-1.5 text-sm font-semibold text-ball">⏹ Stop</button>
+            : <button onClick={() => startReel()} className="rounded-lg bg-ball px-3 py-1.5 text-sm font-semibold text-bg">▶ Play all</button>}
+        </span>
       </div>
       <div ref={el} className="mt-2 aspect-video overflow-hidden rounded-lg bg-black" />
       {c && nowPlaying && <div className="mt-1.5 flex flex-wrap items-center gap-1.5">{nowPlaying(c)}</div>}
@@ -98,7 +117,7 @@ export function ClipReel({ clips, autoStart = false, nowPlaying }: { clips: Reel
       <ul ref={listEl} className="mt-2 max-h-80 divide-y divide-line overflow-y-auto text-sm">
         {clips.map((x, i) => (
           <li key={x.key} data-i={i} className={`flex items-center gap-2 py-2 ${cur === i ? 'text-ball' : ''}`}>
-            <button className="min-w-0 flex-1 text-left" onClick={() => { stopReel(); play(i); }}>
+            <button className="min-w-0 flex-1 text-left" onClick={() => { if (auto) startReel(i); else { stopReel(); play(i); } }}>
               <span className="block truncate">▶ {x.label}{x.star && <span className="ml-1 text-ball" title={`Highlight for ${x.star}`}>★</span>}</span>
               <span className="block truncate text-xs text-muted">{x.sub} · {fmtTime(x.s)}–{fmtTime(x.e)}</span>
             </button>

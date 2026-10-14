@@ -5,6 +5,8 @@ import { PhotoEditor } from '../components/Avatar';
 import { removeHighlight, useHighlights, type Highlight } from '../lib/highlights';
 import { ClipReel } from '../components/ClipReel';
 import { RatingChart } from '../components/RatingChart';
+import { MedalBadge } from '../components/MatchCard';
+import { useMatchRatings } from '../lib/gameRating';
 import { fmtDay, useRatingHistory } from '../lib/history';
 import { HighlightDialog, ShareRally } from '../components/RallyActions';
 import { Link, useParams } from 'react-router-dom';
@@ -108,6 +110,7 @@ export function PlayerDetail() {
         )}
       </section>
       <RatingHistorySection playerId={p.id} />
+      <GameRatingsSection playerId={p.id} />
       {!isGuest && <Highlights playerId={p.id} name={p.name} />}
 
 
@@ -179,6 +182,38 @@ function PositionsEditor({ player }: { player: { id: string; name: string; posit
       </div>
       {error && <p className="text-bad">{error}</p>}
     </div>
+  );
+}
+
+function GameRatingsSection({ playerId }: { playerId: string }) {
+  const all = useMatchRatings();
+  if (!all) return null;
+  const mine = all.flatMap(({ game, result }) => { const r = result.rows.find(x => x.id === playerId); return r ? [{ game, r }] : []; });
+  if (!mine.length) return null;
+  const avg = mine.reduce((t, x) => t + x.r.score, 0) / mine.length;
+  const mvps = mine.filter(x => x.r.medal === 'mvp').length, lose = mine.filter(x => x.r.medal === 'mvp-lose').length;
+  const best = [...mine].sort((a, b) => b.r.score - a.r.score)[0];
+  const tile = (v: string, l: string) => <div className="rounded-lg bg-raised/50 py-2 text-center"><div className="font-display text-lg font-bold">{v}</div><div className="text-[10px] text-muted">{l}</div></div>;
+  return (
+    <section className="rounded-xl border border-line bg-surface p-4">
+      <div className="mb-2 flex items-baseline justify-between">
+        <h2 className="font-display text-lg font-semibold">Game ratings</h2>
+        <span className="text-xs text-muted">{mine.length} game{mine.length === 1 ? '' : 's'} · 0–10 per game</span>
+      </div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {tile(avg.toFixed(1), 'Average')}{tile(String(mvps), '👑 MVP')}{tile(String(lose), 'MVP (lose)')}{tile(best.r.score.toFixed(1), 'Best')}
+      </div>
+      <ul className="mt-2 divide-y divide-line text-sm">
+        {mine.slice(0, 6).map(({ game, r }) => (
+          <li key={game.id}>
+            <Link to={`/games/${game.id}?box=1`} className="flex items-center gap-2 py-2">
+              <span className="min-w-0 flex-1 truncate">{game.title} <span className="text-xs text-muted">{r.titles.join(' · ')}</span></span>
+              <MedalBadge m={r.medal} score={r.score} />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

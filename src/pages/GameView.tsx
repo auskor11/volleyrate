@@ -25,6 +25,8 @@ import {
 } from '../lib/rotation';
 import { HighlightDialog, ShareRally } from '../components/RallyActions';
 import { Avatar } from '../components/Avatar';
+import { MatchCard } from '../components/MatchCard';
+import { matchRatings } from '../lib/gameRating';
 import { Court } from '../components/Court';
 
 const STATUS: Record<Rally['st'], { label: string; cls: string }> = {
@@ -371,6 +373,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
   const showCourt = mode === 'tag' || mode === 'review';
   const view = showCourt && rally && teamsReady && rally.st !== 'bad' ? courtFor(setup, liveRallies, liveRallies.indexOf(rally)) : null;
   const sheet = teamsReady ? scoreSheet(setup, liveRallies) : null;
+  const match = useMemo(() => (mode === 'box' ? matchRatings(game) : null), [mode, game]);
   const scoreAt = new Map(liveRallies.map((r, i) => [r, sheet?.[i]]));
   const notCounted = (upTo: number) => (sheet ?? []).slice(0, upTo).filter(x => !x.winner).length;
   const handled = (t: number) =>
@@ -988,6 +991,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
                 </p>
               </div>
             )}
+            {match && <MatchCard result={match} players={players ?? []} />}
             <BoxScore game={{ ...game, rallies }} players={players ?? []} />
             {canDelete && <RatingChanges game={game} />}
           </div>

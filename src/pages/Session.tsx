@@ -1,13 +1,15 @@
 // A Saturday's recap: who moved in the ratings, the session's leaders, and its plays to watch back to back.
 import { useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { useGames } from '../lib/games';
+import { isGuest, rallyResult, useGames } from '../lib/games';
 import { usePlayers } from '../lib/data';
-import { computeStats, STAT_LABELS, type StatKey } from '../lib/stats';
+import { computeStats, sameTeamIn, STAT_LABELS, type StatKey } from '../lib/stats';
 import { tier } from '../lib/ratings';
 import { fmtDay, useRatingHistory } from '../lib/history';
 import { Avatar } from '../components/Avatar';
 import { ClipReel } from '../components/ClipReel';
+import { MEDAL_COLOR, MedalBadge } from '../components/MatchCard';
+import { matchRatings } from '../lib/gameRating';
 
 const LEADERS: { k: StatKey; label: string }[] = [
   { k: 'kill', label: 'Kills' }, { k: 'ace', label: 'Aces' }, { k: 'assist', label: 'Assists' },
@@ -30,7 +32,7 @@ export function Session() {
   const games = useGames();
   const { players } = usePlayers();
   const h = useRatingHistory();
-  const [reel, setReel] = useState<StatKey>('kill');
+  const [reel, setReel] = useState<StatKey | 'all'>('all');
   if (!games || !players || !h) return null;
   const k = h.sessions.indexOf(date);
   const prev = h.sessions[k - 1], next = h.sessions[k + 1];
@@ -47,8 +49,28 @@ export function Session() {
   }).sort((x, y) => y.d - x.d || y.after - x.after);
   const stats = computeStats(dayGames);
   const top = (s: StatKey) => Object.entries(stats).map(([id, st]) => ({ id, n: st[s].length })).filter(x => x.n > 0).sort((a, b) => b.n - a.n);
+  // game ratings: each game's MVP, and the session MVP (best average over the games they played; at least half)
+  const matches = dayGames.flatMap(g => { const result = matchRatings(g); return result ? [{ game: g, result }] : []; });
+  const per: Record<string, { sum: number; n: number; mvps: number }> = {};
+  for (const { result } of matches) for (const r of result.rows) {
+    const x = (per[r.id] ??= { sum: 0, n: 0, mvps: 0 });
+    x.sum += r.score; x.n++; if (r.medal === 'mvp') x.mvps++;
+  }
+  const sessionMvp = Object.entries(per).filter(([, x]) => x.n * 2 >= matches.length)
+    .map(([id, x]) => ({ id, avg: x.sum / x.n, n: x.n, mvps: x.mvps }))
+    .sort((a, b) => b.avg - a.avg || b.mvps - a.mvps)[0];
   const rallies = dayGames.reduce((n, g) => n + g.rallies.filter(r => r.st !== 'bad').length, 0);
-  const clips = Object.entries(stats).flatMap(([id, st]) => st[reel].map(c => ({ ...c, who: id })))
+  // "All": every rally won by a kill, ace, block or set over, once each (a kill's assist is in its label)
+  const compilation = dayGames.flatMap(g => {
+    const same = sameTeamIn(g);
+    return g.rallies.filter(r => r.st !== 'bad').sort((a, b) => a.s - b.s).flatMap(r => {
+      const res = rallyResult(r, same);
+      if (!res?.good || !['Kill', 'Ace', 'Block', 'Set over'].includes(res.label) || isGuest(res.who)) return [];
+      return [{ key: `${g.id}|${r.s}`, youtubeId: g.youtubeId, s: r.s, e: r.e,
+        label: `${res.label} · ${name(res.who)}${res.assist && !isGuest(res.assist) ? ` (assist ${name(res.assist)})` : ''}`, sub: g.title }];
+    });
+  });
+  const clips = reel === 'all' ? compilation : Object.entries(stats).flatMap(([id, st]) => st[reel].map(c => ({ ...c, who: id })))
     .sort((a, b) => a.title.localeCompare(b.title) || a.t - b.t)
     .flatMap((c, i) => {
       const g = dayGames.find(x => x.id === c.gameId);
@@ -95,6 +117,38 @@ export function Session() {
       )}
       {k < 0 && <p className={`${card} text-sm text-muted`}>This session's games aren't in the ratings yet (not tagged, or not applied by an admin).</p>}
 
+      {matches.length > 0 && (
+        <section className={card}>
+          <h2 className="font-semibold">MVPs</h2>
+          {sessionMvp && (
+            <div className="mt-3 flex items-center gap-3 rounded-lg bg-raised p-3" style={{ boxShadow: `inset 3px 0 0 ${MEDAL_COLOR.mvp}` }}>
+              <Avatar name={name(sessionMvp.id)} photo={photo(sessionMvp.id)} tier="gold" size={48} />
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-muted">👑 Session MVP · best average game rating</div>
+                <Link to={`/players/${sessionMvp.id}`} className="font-semibold">{name(sessionMvp.id)}</Link>
+                <div className="text-xs text-muted">{sessionMvp.n} game{sessionMvp.n === 1 ? '' : 's'}{sessionMvp.mvps ? ` · ${sessionMvp.mvps} MVP${sessionMvp.mvps === 1 ? '' : 's'}` : ''}</div>
+              </div>
+              <span className="font-display text-2xl font-bold tabular-nums" style={{ color: MEDAL_COLOR.mvp }}>{sessionMvp.avg.toFixed(1)}</span>
+            </div>
+          )}
+          <ul className="mt-2 divide-y divide-line text-sm">
+            {matches.map(({ game: g, result }) => {
+              const m = result.rows.find(r => r.medal === 'mvp');
+              return m && (
+                <li key={g.id}>
+                  <Link to={`/games/${g.id}?box=1`} className="flex items-center gap-3 py-2">
+                    <span className="w-28 shrink-0 truncate text-muted">{g.title.replace(/^\d+ \w+ \d+ /, '')}</span>
+                    <Avatar name={name(m.id)} photo={photo(m.id)} size={26} ring={0} />
+                    <span className="min-w-0 flex-1 truncate">{name(m.id)}</span>
+                    <MedalBadge m="mvp" score={m.score} />
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       <section>
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">Session leaders</h2>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -120,10 +174,10 @@ export function Session() {
       <section className={card}>
         <div className="mb-2 flex flex-wrap items-center gap-1.5">
           <h2 className="mr-auto font-semibold">Watch the session</h2>
-          {REELS.map(s => (
+          {(['all', ...REELS] as const).map(s => (
             <button key={s} onClick={() => setReel(s)}
               className={`rounded-full border px-2.5 py-1 text-xs ${reel === s ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>
-              {lab(s)}
+              {s === 'all' ? `All (${compilation.length})` : lab(s)}
             </button>
           ))}
         </div>

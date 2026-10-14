@@ -185,3 +185,21 @@ Each position weights the 11 attributes differently (each row sums to 100%):
 - Bronze: below 70
 
 **Category scores** (Attack, Defence, Game Intelligence…) are plain averages of their attributes, except a **libero's Defence**, which is 85% Receiving and 15% Blocking. This uses the player's main position.
+
+## 8. Game ratings (per game, Mobile Legends style)
+
+A separate 0–10 score for each player in each game (`src/lib/gameRating.ts`). It never changes the player
+ratings above.
+
+- **Net points** from that game's tags:
+  - plus: kill, ace, block point and set-over point 1 each; assist 0.6; dig 0.25; receive 0.15; block touch 0.15; free ball 0.1
+  - minus: attack, serve, receive/dig and other errors 1 each; getting blocked 0.5
+- **Score** = 6 + 0.5 × net points × (50 ÷ tagged rallies in the game), +0.5 for the winning team, kept between 0 and 10
+  (one decimal). The winner is the team with more points in the game's score sheet (needs the team setup).
+- **MVP** (👑) is the best score on the winning team; **MVP** on the losing team is that team's best.
+  Everyone else gets a medal: **Gold** from 7.5, **Silver** from 6.0, otherwise **Bronze**.
+- **Titles:** the game's outright leader (at least 2) in kills, aces, block points, assists ("Playmaker") or digs,
+  and "N in a row" for a player credited with the point in 3 or more rallies running.
+- **Session MVP** (on the session recap): the best average game rating that Saturday among players who played at
+  least half the games.
+- Guests are left out.
