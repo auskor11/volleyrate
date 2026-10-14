@@ -88,35 +88,6 @@ export function Session() {
         <p className="text-sm text-muted">{dayGames.length} game{dayGames.length === 1 ? '' : 's'} · {rallies} rallies</p>
       </div>
 
-      {movers.length > 0 && (
-        <section className={card}>
-          <h2 className="font-semibold">Ratings this session</h2>
-          {movers[0].d > 0 && (
-            <div className="mt-3 flex items-center gap-3 rounded-lg bg-raised p-3">
-              <Avatar name={name(movers[0].id)} photo={photo(movers[0].id)} tier={tier(movers[0].after)} size={48} />
-              <div className="min-w-0 flex-1">
-                <div className="text-xs text-muted">Biggest riser</div>
-                <Link to={`/players/${movers[0].id}`} className="font-semibold">{name(movers[0].id)}</Link>
-              </div>
-              <div className="text-right tabular-nums"><span className="text-muted">{movers[0].before} →</span> <b className="text-lg">{movers[0].after}</b> <span className="text-good">▲{movers[0].d}</span></div>
-            </div>
-          )}
-          <ul className="mt-2 divide-y divide-line text-sm">
-            {movers.map(m => (
-              <li key={m.id}>
-                <Link to={`/players/${m.id}`} className="flex items-center gap-3 py-2">
-                  <Avatar name={name(m.id)} photo={photo(m.id)} tier={tier(m.after)} size={28} ring={1.5} />
-                  <span className="flex-1">{name(m.id)}</span>
-                  <span className="tabular-nums text-muted">{m.before} → <b className="text-ink">{m.after}</b></span>
-                  <span className={`w-10 text-right tabular-nums ${m.d > 0 ? 'text-good' : m.d < 0 ? 'text-bad' : 'text-muted'}`}>{m.d > 0 ? `▲${m.d}` : m.d < 0 ? `▼${-m.d}` : '–'}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {k < 0 && <p className={`${card} text-sm text-muted`}>This session's games aren't in the ratings yet (not tagged, or not applied by an admin).</p>}
-
       {matches.length > 0 && (
         <section className={card}>
           <h2 className="font-semibold">MVPs</h2>
@@ -192,6 +163,35 @@ export function Session() {
           ))}
         </ul>
       </section>
+
+      {movers.length > 0 && (
+        <section className={card}>
+          <h2 className="font-semibold">Ratings this session</h2>
+          {movers[0].d > 0 && (
+            <div className="mt-3 flex items-center gap-3 rounded-lg bg-raised p-3">
+              <Avatar name={name(movers[0].id)} photo={photo(movers[0].id)} tier={tier(movers[0].after)} size={48} />
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-muted">Biggest riser</div>
+                <Link to={`/players/${movers[0].id}`} className="font-semibold">{name(movers[0].id)}</Link>
+              </div>
+              <div className="text-right tabular-nums"><span className="text-muted">{movers[0].before} →</span> <b className="text-lg">{movers[0].after}</b> <span className="text-good">▲{movers[0].d}</span></div>
+            </div>
+          )}
+          <ul className="mt-2 divide-y divide-line text-sm">
+            {movers.map(m => (
+              <li key={m.id}>
+                <Link to={`/players/${m.id}`} className="flex items-center gap-3 py-2">
+                  <Avatar name={name(m.id)} photo={photo(m.id)} tier={tier(m.after)} size={28} ring={1.5} />
+                  <span className="flex-1">{name(m.id)}</span>
+                  <span className="tabular-nums text-muted">{m.before} → <b className="text-ink">{m.after}</b></span>
+                  <span className={`w-10 text-right tabular-nums ${m.d > 0 ? 'text-good' : m.d < 0 ? 'text-bad' : 'text-muted'}`}>{m.d > 0 ? `▲${m.d}` : m.d < 0 ? `▼${-m.d}` : '–'}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {k < 0 && <p className={`${card} text-sm text-muted`}>This session's games aren't in the ratings yet (not tagged, or not applied by an admin).</p>}
     </div>
   );
 }
