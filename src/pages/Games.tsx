@@ -78,6 +78,7 @@ export function GamesList({ games }: { games: Game[] | null }) {
                 </button>
                 {expanded && (
                   <div className="space-y-2 border-t border-line p-2">
+                    <Link to={`/sessions/${d}`} className="block rounded-lg px-2 py-1.5 text-sm text-ball hover:bg-raised">Session recap: ratings, leaders and plays →</Link>
                     {day.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true })).map(g => (
                       <Link key={g.id} to={`/games/${g.id}`} className="flex gap-3 overflow-hidden rounded-lg bg-raised/50 hover:bg-raised">
                         <img src={thumbnail(g.youtubeId)} alt="" className="aspect-video w-32 shrink-0 object-cover" />

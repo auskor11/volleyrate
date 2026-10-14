@@ -4,6 +4,8 @@ import { useTheme } from '../lib/theme';
 import { PhotoEditor } from '../components/Avatar';
 import { removeHighlight, useHighlights, type Highlight } from '../lib/highlights';
 import { ClipReel } from '../components/ClipReel';
+import { RatingChart } from '../components/RatingChart';
+import { fmtDay, useRatingHistory } from '../lib/history';
 import { HighlightDialog, ShareRally } from '../components/RallyActions';
 import { Link, useParams } from 'react-router-dom';
 import { AttrBar, PlayerCard } from '../components/PlayerCard';
@@ -97,6 +99,7 @@ export function PlayerDetail() {
           </p>
         )}
       </section>
+      <RatingHistorySection playerId={p.id} />
       {!isGuest && <Highlights playerId={p.id} name={p.name} />}
 
 
@@ -168,6 +171,27 @@ function PositionsEditor({ player }: { player: { id: string; name: string; posit
       </div>
       {error && <p className="text-bad">{error}</p>}
     </div>
+  );
+}
+
+function RatingHistorySection({ playerId }: { playerId: string }) {
+  const h = useRatingHistory();
+  const pts = h?.byPlayer[playerId];
+  if (!h || !pts || h.sessions.length < 1) return null;
+  const played = h.sessions.filter((_, i) => pts[i + 1]?.played);
+  return (
+    <section className="rounded-xl border border-line bg-surface p-4">
+      <div className="mb-2 flex items-baseline justify-between">
+        <h2 className="font-display text-lg font-semibold">Overall by session</h2>
+        <span className="text-xs text-muted">{played.length} of {h.sessions.length} sessions played</span>
+      </div>
+      <RatingChart points={pts} />
+      {played.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+          {played.slice(-4).reverse().map(d => <Link key={d} to={`/sessions/${d}`} className="rounded-md border border-line px-2 py-0.5 text-muted">{fmtDay(d)} recap →</Link>)}
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -9,6 +9,7 @@ import { overall, tier } from '../lib/ratings';
 import { useTheme } from '../lib/theme';
 import { Avatar } from '../components/Avatar';
 import { GuestPanel } from '../components/GuestPanel';
+import { fmtDay, useRatingHistory } from '../lib/history';
 
 export function Home() {
   const { member, user } = useAuth();
@@ -64,6 +65,7 @@ export function Home() {
 
       <Leaders />
 
+      <LatestRecap />
       <Link to="/games" className="block rounded-xl border border-line bg-surface p-4">
         <h2 className="font-semibold">Game film →</h2>
         <p className="mt-1 text-sm text-muted">Watch every rally from our recorded games.</p>
@@ -102,5 +104,17 @@ function Leaders() {
         })}
       </div>
     </section>
+  );
+}
+
+function LatestRecap() {
+  const h = useRatingHistory();
+  const last = h?.sessions.at(-1);
+  if (!last) return null;
+  return (
+    <Link to={`/sessions/${last}`} className="block rounded-xl border border-ball/40 bg-surface p-4">
+      <h2 className="font-semibold">Session recap · {fmtDay(last)} →</h2>
+      <p className="mt-1 text-sm text-muted">Who moved in the ratings, the session's leaders, and its kills and aces back to back.</p>
+    </Link>
   );
 }
