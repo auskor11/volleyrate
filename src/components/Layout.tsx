@@ -98,7 +98,7 @@ export function Layout() {
   return (
     <>
     {clean && (  // Clean, on big screens: a slim sidebar instead of the phone-style bottom bar
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-52 flex-col gap-1 border-r border-line bg-bg px-3 py-4 lg:flex">
+      <aside className="app-side fixed inset-y-0 left-0 z-20 hidden w-52 flex-col gap-1 border-r border-line bg-bg px-3 py-4 lg:flex">
         <div className="mb-4 flex items-center gap-2 px-2"><Logo /><span className="font-display text-lg font-bold">VolleyRate</span></div>
         {all.map(t => (
           <NavLink key={t.to} to={t.to} end={t.to === '/'}
@@ -109,9 +109,9 @@ export function Layout() {
         <div className="mt-auto px-1"><AccountMenu up /></div>
       </aside>
     )}
-    <div className={`mx-auto flex min-h-dvh flex-col ${wide ? 'max-w-7xl' : 'max-w-3xl'} ${clean ? 'lg:pl-52 lg:max-w-none' : ''}`}>
+    <div className={`app-shell mx-auto flex min-h-dvh flex-col ${wide ? 'max-w-7xl' : 'max-w-3xl'} ${clean ? 'lg:pl-52 lg:max-w-none' : ''}`}>
       <div className={clean ? `mx-auto flex w-full flex-1 flex-col ${wide ? 'max-w-7xl' : 'max-w-3xl'}` : 'contents'}>
-      <header className={`safe-top sticky top-0 z-10 ${clean ? 'lg:hidden' : ''} border-b border-line/60 bg-bg/90 backdrop-blur`}>
+      <header className={`app-head safe-top sticky top-0 z-10 ${clean ? 'lg:hidden' : ''} border-b border-line/60 bg-bg/90 backdrop-blur`}>
         <div className="flex h-14 items-center gap-2 px-4">
           <span className={clean ? 'contents lg:hidden' : 'contents'}>
             <Logo />
@@ -123,7 +123,7 @@ export function Layout() {
       <main className={`flex-1 px-4 pb-28 pt-4 ${clean ? (wide ? 'lg:pb-4' : 'lg:pb-10') : ''}`}>
         <Outlet />
       </main>
-      <nav className={`safe-bottom fixed inset-x-0 bottom-0 z-10 border-t border-line/60 bg-bg/95 backdrop-blur ${clean ? 'lg:hidden' : ''}`}>
+      <nav className={`app-nav safe-bottom fixed inset-x-0 bottom-0 z-10 border-t border-line/60 bg-bg/95 backdrop-blur ${clean ? 'lg:hidden' : ''}`}>
         <div className="mx-auto flex max-w-3xl">
           {all.map(t => (
             <NavLink

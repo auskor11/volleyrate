@@ -20,7 +20,7 @@ import { useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
 import {
   BACK_COURT_PLAYERS, otherPairServer, ROLE_NAMES, TEAMS, assignMiddles, courtFor, guestServes, likelyLibero, sameCourt, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
-  scoreSheet, server, setupReady, startCourt,
+  roleAt, scoreSheet, server, setupReady, startCourt,
   type CourtSetup, type CourtState, type CourtView, type Team,
 } from '../lib/rotation';
 import { HighlightDialog, ShareRally } from '../components/RallyActions';
@@ -85,7 +85,54 @@ const DETAIL_KEYS = ['a', 's', 'd'];
 const SKILL_KEY_OF = Object.fromEntries(Object.entries(SKILL_KEYS_KB).map(([k, v]) => [v, k])) as Record<Skill, string>;
 
 function Kbd({ k }: { k: string }) {
-  return <span className="ml-1 hidden rounded border border-line px-1 font-mono text-[10px] text-muted lg:inline">{k}</span>;
+  return <span className="kbd-chip ml-1 hidden rounded border border-line px-1 font-mono text-[10px] text-muted lg:inline">{k}</span>;
+}
+/** A key on its own small line under a button label (laptops only; hidden when keys are switched off). */
+const KeyLine = ({ k }: { k: string }) => (
+  <span className="kbd-chip mx-auto mt-1 hidden w-fit rounded border border-current px-1 font-mono text-[10px] leading-tight opacity-60 lg:block">{k}</span>
+);
+
+const KEYS_PREF = 'volleyrate.showKeys';
+const keysShown = () => { try { return localStorage.getItem(KEYS_PREF) !== 'off'; } catch { return true; } };
+const applyKeys = (on: boolean) => { document.documentElement.dataset.keys = on ? 'on' : 'off'; };
+
+/** Every tagging shortcut in one place, with the switch for the key chips on buttons. */
+function ShortcutSheet({ onClose }: { onClose: () => void }) {
+  const [on, setOn] = useState(keysShown);
+  useEffect(() => {  // Esc closes it, wherever the focus is (even on the switch)
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [onClose]);
+  const set = (v: boolean) => { setOn(v); applyKeys(v); try { localStorage.setItem(KEYS_PREF, v ? 'on' : 'off'); } catch { /* storage blocked */ } };
+  const K = ({ k }: { k: string }) => <span className="ml-1 inline-block rounded border border-line bg-raised px-1.5 font-mono text-[11px] font-semibold">{k}</span>;
+  const rows: [string, string[]][] = [
+    ['Serve · Receive · Set · Attack', ['Q', 'W', 'E', 'R']],
+    ['Block · Dig · Free ball · Other', ['T', 'Y', 'I', 'U']],
+    ['Players (in shirt-number order)', ['1', '…', '9', '0']],
+    ['Guest A · Guest B', ['G', 'H']],
+    ['Grade the touch, or attack type (when offered)', ['A', 'S', 'D']],
+    ['Last touch scored · last touch error', ['P', 'X']],
+    ['Undo last touch', ['Z']],
+    ['Not a touch (AI suggestion)', ['N']],
+    ['Previous · next rally', ['←', '→']],
+    ['Play / pause', ['Space']],
+    ['This sheet', ['?']],
+  ];
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl border border-line bg-surface p-4 shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="mb-2 flex items-center justify-between"><h2 className="font-semibold">Keyboard shortcuts</h2><button className="text-sm text-muted" onClick={onClose}>Esc ✕</button></div>
+        <table className="w-full text-sm">
+          <tbody>{rows.map(([what, ks]) => <tr key={what} className="border-t border-line"><td className="py-1.5 text-muted">{what}</td><td className="py-1.5 text-right whitespace-nowrap">{ks.map(k => <K key={k} k={k} />)}</td></tr>)}</tbody>
+        </table>
+        <label className="mt-3 flex items-center justify-between rounded-lg bg-raised px-3 py-2 text-sm">
+          Show keys on buttons
+          <input type="checkbox" checked={on} onChange={e => set(e.target.checked)} className="h-4 w-4 accent-[#f5c518]" />
+        </label>
+      </div>
+    </div>
+  );
 }
 
 function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange, onDone, onPrev, onNext, hasPrev, hasNext, sug, onSkip, serve, onServer, wonBy, needTeams, onTeams, sameTeam }: {
@@ -107,6 +154,8 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   const [skill, setSkill] = useState<Skill | null>(null);  // null = use the prediction
   const [sel, setSel] = useState<number | null>(null);     // touch being edited
   const [fixServer, setFixServer] = useState(false);
+  const [sheet, setSheet] = useState(false);  // shortcut sheet
+  useEffect(() => { applyKeys(keysShown()); }, []);
   useEffect(() => { setSkill(null); }, [rally?.s, saved.length]);
   useEffect(() => { setSel(null); setFixServer(false); }, [rally?.s]);
   // The predicted serve is shown as the first touch and saved with the next tap (or the result).
@@ -169,12 +218,14 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   }
 
   // laptop shortcuts
-  const keys = useRef({ addTouch, undo, finish, onSkip, togglePlay, onPrev, onNext, sorted, touches, sug, pickSkill, detailOpts });
-  keys.current = { addTouch, undo, finish, onSkip, togglePlay, onPrev, onNext, sorted, touches, sug, pickSkill, detailOpts };
+  const keys = useRef({ addTouch, undo, finish, onSkip, togglePlay, onPrev, onNext, sorted, touches, sug, pickSkill, detailOpts, setSheet });
+  keys.current = { addTouch, undo, finish, onSkip, togglePlay, onPrev, onNext, sorted, touches, sug, pickSkill, detailOpts, setSheet };
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement).tagName === 'INPUT') return;
       const c = keys.current, key = e.key.toLowerCase();
+      if (key === '?') { e.preventDefault(); c.setSheet(s => !s); return; }
+      if (key === 'escape') { c.setSheet(false); return; }
       const pi = PLAYER_KEYS.indexOf(key);
       const last = c.touches.length - 1;
       const act =
@@ -204,11 +255,13 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   const why = serve?.why ?? '';
 
   return (
-    <div className="space-y-2 rounded-xl border border-line bg-surface p-2">
+    <div className="space-y-3 rounded-xl border border-line bg-surface p-3">
+      {sheet && <ShortcutSheet onClose={() => setSheet(false)} />}
       <div className="flex items-center gap-2">
         <button className={`${btn} px-3 py-1.5`} disabled={!hasPrev} onClick={onPrev}>◀</button>
         <div className="min-w-0 flex-1 truncate text-center text-sm">{status}</div>
         <button className={`${btn} px-3 py-1.5`} disabled={!hasNext} onClick={onNext}>▶</button>
+        <button className={`${btn} hidden px-2.5 py-1.5 lg:block`} onClick={() => setSheet(true)} title="Keyboard shortcuts (?)">⌨ ?</button>
       </div>
       {rally && (
         <>
@@ -222,15 +275,19 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
             <p className="text-xs text-muted">Has a quick point tag; adding touches replaces it with a full breakdown.</p>
           )}
           {touches.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5 text-sm">
               {touches.map((t, i) => (
-                <button key={i} onClick={() => setSel(sel === i ? null : i)} title="Tap to change or delete this touch"
-                  className={`rounded-md px-1.5 py-0.5 ${sel === i ? 'ring-2 ring-ball' : ''} ${doubled === i ? 'outline outline-1 outline-bad' : ''} ${pre ? 'border border-dashed border-ball/60' : ''} ${rally.end?.i === i ? (rally.end.r === 'point' ? 'bg-good/20 text-good' : 'bg-bad/20 text-bad') : 'bg-raised'}`}>
-                  {name(t.p)} <span className="text-muted">{t.k === 'attack' && t.a ? ATTACK_TYPES[t.a] : SKILLS[t.k]}</span>
-                  {t.q && <span className="ml-0.5 rounded bg-surface px-1 text-[10px] font-semibold">{t.q}</span>}
-                </button>
+                <Fragment key={i}>
+                  {i > 0 && <span className="text-xs text-muted">→</span>}
+                  <button onClick={() => setSel(sel === i ? null : i)} title="Tap to change or delete this touch"
+                    className={`rounded-lg border px-2.5 py-1 ${sel === i ? 'ring-2 ring-ball' : ''} ${doubled === i ? 'outline outline-1 outline-bad' : ''} ${pre ? 'border-dashed border-ball/60' : 'border-line'} ${rally.end?.i === i ? (rally.end.r === 'point' ? 'bg-good/20 text-good' : 'bg-bad/20 text-bad') : 'bg-raised'}`}>
+                    <b className="font-semibold">{name(t.p)}</b> <span className="text-xs text-muted">{t.k === 'attack' && t.a ? ATTACK_TYPES[t.a] : SKILLS[t.k]}</span>
+                    {t.q && <span className="ml-1 rounded bg-surface px-1 text-[10px] font-semibold">{t.q}</span>}
+                  </button>
+                </Fragment>
               ))}
-              {saved.length > 0 && <button className="ml-1 text-muted underline" onClick={undo}>undo<Kbd k="Z" /></button>}
+              {!rally.end && <><span className="text-xs text-muted">→</span><span className="rounded-lg border border-dashed border-line px-2.5 py-1 text-muted">?</span></>}
+              {saved.length > 0 && <button className="ml-auto rounded-lg border border-dashed border-line px-2.5 py-1 text-xs text-muted" onClick={undo}>↶ Undo<Kbd k="Z" /></button>}
             </div>
           )}
           {sel !== null && touches[sel] && (
@@ -283,42 +340,52 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
               ))}
             </div>
           )}
-          <div className="grid grid-cols-4 gap-1 sm:grid-cols-8 lg:grid-cols-4 xl:grid-cols-8">
+          <div className="grid grid-cols-4 gap-1.5">
             {SKILL_KEYS.map(s => (
               <button key={s} onClick={() => pickSkill(s)}
-                className={`rounded-md border py-1 text-[11px] font-semibold ${s === k ? 'border-ball bg-ball text-bg' : 'border-line text-muted'}`}>
-                {SKILLS[s]}<span className="hidden text-[9px] opacity-60 lg:inline"> {SKILL_KEY_OF[s].toUpperCase()}</span>
+                className={`rounded-lg border px-1 py-2 text-xs font-semibold leading-tight sm:text-[13px] ${s === k ? 'border-ball bg-ball text-bg' : 'border-line text-muted'}`}>
+                {SKILLS[s]}<KeyLine k={SKILL_KEY_OF[s].toUpperCase()} />
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-3">
             {sorted.map((pl, i) => (
               <button key={pl.id} onClick={() => addTouch(pl.id)}
-                className="flex items-center justify-between gap-1 rounded-lg border border-line bg-raised px-2 py-2 text-left text-sm font-semibold active:scale-[0.97] active:border-ball">
-                {pl.photo && <span className="clean-only"><Avatar name={pl.name} photo={pl.photo} size={22} ring={0} /></span>}
+                className="relative flex min-h-11 items-center gap-2 rounded-lg border border-line bg-raised py-2 pl-2 pr-7 text-left text-sm font-semibold active:scale-[0.97] active:border-ball">
+                {pl.photo && <span className="clean-only"><Avatar name={pl.name} photo={pl.photo} size={26} ring={0} /></span>}
                 <span className="min-w-0 flex-1 truncate">{pl.name}</span>
-                <span className="shrink-0 text-xs text-muted">{pl.number !== null ? `#${pl.number}` : ''}{PLAYER_KEYS[i] && <Kbd k={PLAYER_KEYS[i]} />}</span>
+                {pl.number !== null && <span className="absolute right-1.5 top-1 text-[10px] font-normal text-muted">#{pl.number}</span>}
+                {PLAYER_KEYS[i] && <span className="kbd-chip absolute bottom-1 right-1.5 hidden rounded border border-line px-1 font-mono text-[10px] font-normal text-muted lg:block">{PLAYER_KEYS[i]}</span>}
               </button>
             ))}
             {(['a', 'b'] as const).map(t => (
               <button key={t} onClick={() => addTouch(`guest-${t}`)}
-                className="rounded-lg border border-line bg-raised px-2 py-2 text-sm text-muted active:scale-[0.97]">Guest {t.toUpperCase()}<Kbd k={t === 'a' ? 'G' : 'H'} /></button>
+                className="relative min-h-11 rounded-lg border border-line bg-raised px-2 py-2 text-sm text-muted active:scale-[0.97]">
+                Guest {t.toUpperCase()}
+                <span className="kbd-chip absolute bottom-1 right-1.5 hidden rounded border border-line px-1 font-mono text-[10px] lg:block">{t === 'a' ? 'G' : 'H'}</span>
+              </button>
             ))}
           </div>
-          {enders.length > 0 && (
-            <div className="grid grid-cols-2 gap-1.5">
-              {enders.map(({ t, i }) => (
-                <Fragment key={i}>
-                  <button className="truncate rounded-lg border border-line bg-raised px-2 py-2 text-xs font-semibold text-good" onClick={() => finish(i, 'point')}>
-                    ✓ {name(t.p)}'s {SKILLS[t.k].toLowerCase()} scored{i === touches.length - 1 && <Kbd k="P" />}
-                  </button>
-                  <button className="truncate rounded-lg border border-line bg-raised px-2 py-2 text-xs font-semibold text-bad" onClick={() => finish(i, 'error')}>
-                    ✗ {name(t.p)}'s {SKILLS[t.k].toLowerCase()} error{i === touches.length - 1 && <Kbd k="X" />}
-                  </button>
-                </Fragment>
-              ))}
-            </div>
-          )}
+          {enders.length > 0 && (() => {
+            const [last, before] = enders;
+            const what = (t: Touch) => `${name(t.p)}'s ${SKILLS[t.k].toLowerCase()}`;
+            return (
+              <div className="space-y-1.5">
+                <button className="flex w-full items-center justify-between rounded-lg border border-good/40 bg-good/10 px-3 py-2.5 text-left text-sm font-semibold text-good" onClick={() => finish(last.i, 'point')}>
+                  <span>✓ {what(last.t)} scored</span><Kbd k="P" />
+                </button>
+                <button className="flex w-full items-center justify-between rounded-lg border border-bad/40 bg-bad/10 px-3 py-2.5 text-left text-sm font-semibold text-bad" onClick={() => finish(last.i, 'error')}>
+                  <span>✗ {what(last.t)} error</span><Kbd k="X" />
+                </button>
+                {before && (
+                  <div className="grid grid-cols-2 gap-1.5 text-xs">
+                    <button className="rounded-lg border border-line bg-raised px-2 py-1.5 font-semibold text-good" onClick={() => finish(before.i, 'point')}>✓ {what(before.t)} scored</button>
+                    <button className="rounded-lg border border-line bg-raised px-2 py-1.5 font-semibold text-bad" onClick={() => finish(before.i, 'error')}>✗ {what(before.t)} error</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           </>}
         </>
       )}
@@ -349,6 +416,15 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
   const players = samplePlayers ?? dbPlayers;  // samplePlayers: dev preview only
   const [rallies, setRallies] = useState<Rally[]>([]);
   const [cur, setCur] = useState(-1);
+  const [focus, setFocus] = useState(false);  // tagging focus mode: no sidebar, no rally list
+  useEffect(() => {
+    const on = focus && mode === 'tag';
+    if (on) document.documentElement.dataset.focus = 'on'; else delete document.documentElement.dataset.focus;
+    if (!on) return;
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setFocus(false); };
+    window.addEventListener('keydown', esc);
+    return () => { window.removeEventListener('keydown', esc); delete document.documentElement.dataset.focus; };
+  }, [focus, mode]);
   const [autoplay, setAutoplay] = useAutoplay();  // Watch / Box score: carry on to the next rally (same setting as playlists)
   const playAll = autoplay && (mode === 'watch' || mode === 'box');
   const [saveState, setSaveState] = useState<'' | 'saving' | 'saved' | 'error'>('');
@@ -762,7 +838,8 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
 
   // Fills the screen: phone = video on top + list scrolling below; wide screen = video left, list right.
   return (
-    <div className={`game-fill flex h-[calc(100dvh-11.5rem-env(safe-area-inset-top))] flex-col gap-3 lg:grid lg:gap-5 ${mode === 'box' ? 'max-lg:!h-auto' : ''} ${showCourt
+    <div className={`game-fill flex h-[calc(100dvh-11.5rem-env(safe-area-inset-top))] flex-col gap-3 lg:grid lg:gap-5 ${mode === 'box' ? 'max-lg:!h-auto' : ''} ${mode === 'tag'
+      ? 'lg:grid-cols-[minmax(0,1.25fr)_minmax(420px,1fr)]' : showCourt
       ? 'lg:grid-cols-[minmax(0,1.9fr)_minmax(280px,1fr)_minmax(230px,0.75fr)]' : 'lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]'}`}>
       <div className={`shrink-0 space-y-2 ${mode === 'tag' ? 'lg:flex lg:min-h-0 lg:flex-col lg:gap-2 lg:space-y-0 lg:overflow-y-auto' : 'lg:overflow-y-auto'}`}>
         <div className="game-head flex items-start gap-3">
@@ -771,6 +848,12 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
             <h1 className="truncate font-display text-2xl font-bold">{game.title}</h1>
             <p className="text-sm text-muted">{game.date} · {live} rallies{!game.reviewed && ' · needs review'}</p>
           </div>
+          {mode === 'tag' && (
+            <button onClick={() => setFocus(!focus)} title="Hide the sidebar and rally list while tagging (Esc to leave)"
+              className={`mt-5 hidden shrink-0 rounded-lg border px-3 py-1.5 text-sm lg:block ${focus ? 'border-ball bg-ball/15 text-ball' : 'border-line'}`}>
+              {focus ? '⤡ Leave focus' : '⤢ Focus'}
+            </button>
+          )}
           {canEdit && (
             <button onClick={() => setShowHistory(true)} className="mt-5 shrink-0 rounded-lg border border-line px-3 py-1.5 text-sm">
               History
@@ -847,8 +930,8 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
           </div>
         ) : mode === 'tag' ? (
           <>
-            <p className="hidden text-xs text-muted lg:block">Tag while it plays: tap names (or press 1–9, 0, G / H for guests) as each touch happens. Space = play/pause.</p>
-            {rallyList(listEl2, 'hidden min-h-[8.125rem] flex-1 lg:block', true)}
+            <p className="hidden text-xs text-muted lg:block">Tag while it plays: tap names (or press 1–9, 0, G / H for guests) as each touch happens. Space = play/pause · ? = all shortcuts.</p>
+            {!focus && rallyList(listEl2, 'hidden min-h-[8.125rem] flex-1 lg:block', true)}
           </>
         ) : (
           <div className="space-y-2">
@@ -931,7 +1014,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className={`flex min-h-0 flex-1 flex-col gap-2 ${mode === 'tag' ? 'lg:overflow-y-auto lg:pr-1' : ''}`}>
         <div className="flex shrink-0 gap-1 rounded-xl bg-surface p-1">
           {(canEdit ? ['watch', 'review', 'tag', 'box'] as const : ['watch', 'box'] as const).map(m => (
             <button key={m} onClick={() => { setMode(m); setCur(-1); }}
@@ -970,6 +1053,13 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
                 Pause at AI-suggested touches (experimental)
               </label>
             : <AddSuggestions gameId={game.id} />
+        )}
+
+        {mode === 'tag' && (
+          <TagCourt view={view} setup={setup} name={name} score={rally ? scoreAt.get(rally)?.before : undefined}>
+            <RotationPanel view={view} setup={setup} name={name} photo={id => players?.find(p => p.id === id)?.photo} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={openTeams} onEditRally={openTeamsFrom}
+              score={rally ? scoreAt.get(rally)?.before : undefined} missed={rally ? notCounted(liveRallies.indexOf(rally)) : 0} />
+          </TagCourt>
         )}
 
         {showCourt && (
@@ -1011,7 +1101,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
         {rallyList(listEl, `${mode === 'box' ? 'hidden' : ''} ${mode === 'tag' ? 'lg:hidden' : ''} min-h-40 flex-1`)}
       </div>
 
-      {showCourt && (
+      {showCourt && mode !== 'tag' && (
         <div className="hidden min-h-0 overflow-y-auto lg:block">
           <div className="rounded-xl border border-line bg-surface p-2">
             <RotationPanel view={view} setup={setup} name={name} photo={id => players?.find(p => p.id === id)?.photo} tagged={!!rally && isTagged(rally)} notRally={rally?.st === 'bad'} onChange={setCourt} onSetup={openTeams} onEditRally={openTeamsFrom}
@@ -1019,6 +1109,51 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Tagging, on a laptop: a compact court under the tagger (both teams' spots and the server); the full court with
+ * its swap / rotate / serving controls opens under "⋯ Adjust".
+ */
+function TagCourt({ view, setup, name, score, children }: {
+  view: CourtView | null; setup: CourtSetup | null; name: (id?: string) => string; score?: { a: number; b: number }; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!setupReady(setup)) return <div className="hidden shrink-0 rounded-xl border border-line bg-surface p-3 lg:block">{children}</div>;
+  const c = view?.state ?? startCourt(setup);
+  const spot = (t: Team, i: number) => {
+    const p = c[t].pos[i], serve = i === 0 && c.serving === t;
+    return (
+      <div key={i} className={`min-w-0 rounded-md border px-1 py-1 text-center text-[11px] leading-tight ${serve ? 'border-ball bg-ball/15 text-ball' : 'border-line bg-raised'}`}>
+        <span className="text-[10px] text-muted">{i + 1}{serve ? ' · 🏐' : ''}</span>
+        <b className="block truncate font-semibold">{p ? name(p) : '—'}</b>
+        <span className="block text-[9px] text-muted">{p ? roleAt(c[t], i) : ''}</span>
+      </div>
+    );
+  };
+  // each team seen from its own baseline: front row (4 3 2) at the net, back row (5 6 1) behind
+  const team = (t: Team) => (
+    <div className="min-w-0">
+      <div className="mb-1 text-[11px] text-muted">Team {t.toUpperCase()}{c.serving === t ? ' · serving' : ''}</div>
+      <div className="grid grid-cols-3 gap-1">{[3, 2, 1].map(i => spot(t, i))}</div>
+      <div className="my-1 h-0.5 rounded bg-ink/30" />
+      <div className="grid grid-cols-3 gap-1">{[4, 5, 0].map(i => spot(t, i))}</div>
+    </div>
+  );
+  return (
+    <div className="hidden shrink-0 rounded-xl border border-line bg-surface p-3 lg:block">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold">
+          Court{score && <span className="ml-2 tabular-nums text-muted">A {score.a}–{score.b} B</span>}
+          {view && <span className="ml-2 text-xs font-normal text-muted">· 🏐 {name(server(c))}{view.manual ? ' · changed by hand' : ''}</span>}
+        </span>
+        <button onClick={() => setOpen(!open)} className={`rounded-full border px-2.5 py-0.5 text-xs ${open ? 'border-ball text-ball' : 'border-line text-muted'}`}>
+          {open ? 'Done' : '⋯ Adjust'}
+        </button>
+      </div>
+      {open ? <div className="mx-auto max-w-[19rem]">{children}</div> : <div className="grid grid-cols-2 gap-3">{team('a')}{team('b')}</div>}
     </div>
   );
 }

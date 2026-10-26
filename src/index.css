@@ -87,3 +87,13 @@ body {
   [data-ui="clean"] .game-head > :first-child { flex-basis: 100%; }
   [data-ui="clean"] .game-head > button { margin-top: 0; padding: 0.25rem 0.625rem; font-size: 0.75rem; }
 }
+/* key chips on tagging buttons can be switched off (tagging shortcut sheet) */
+[data-keys="off"] .kbd-chip { display: none !important; }
+/* tagging focus mode (laptops): no sidebar, top bar or bottom tabs; the game page uses the whole window */
+@media (min-width: 1024px) {
+  [data-focus="on"] .app-side, [data-focus="on"] .app-head, [data-focus="on"] .app-nav { display: none !important; }
+  [data-focus="on"] .app-shell { padding-left: 0 !important; max-width: none !important; }
+  [data-focus="on"] .app-shell > div, [data-focus="on"] .app-shell > main { max-width: none !important; }
+  [data-focus="on"] main { padding-bottom: 1rem !important; }
+  [data-focus="on"] .game-fill { height: calc(100dvh - 2rem) !important; }
+}
