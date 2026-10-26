@@ -51,8 +51,8 @@ export interface Side {
   pos: string[]; roles: Position[]; bench: string[]; mb?: string; lib?: string; mid?: [string, string];
   l6?: string;        // six-player team: its back-court player ('' = none)
   l6front?: boolean;  // …who plays front court too (otherwise he swaps with the player opposite him at the front row)
-  l6serve?: 'partner'; // …when his partner (the player opposite) is at position 1 to serve, the partner serves and
-                       //   they swap after the serve (otherwise the back-court player serves in his place)
+  l6serve?: 'partner'; // …when the two of them are at positions 1 and 4 and the team serves: the partner serves,
+                       //   then they swap (otherwise the back-court player serves)
 }
 
 /** Players who normally stay in the back court; preselected as a six-player team's libero-type player. */
@@ -140,8 +140,8 @@ export const rotateBack = (s: Side): Side => ({ ...s, pos: turn(s.pos, true), ro
 
 /**
  * A six-player team's back-court player swaps with the player opposite him (the other middle, or the setter)
- * whenever he reaches the front row. When the pair is at positions 1 and 4 and the team serves, `l6serve`
- * says who serves: the back-court player (default) or his partner, who then swaps with him after the serve.
+ * whenever he reaches the front row. When the pair is at positions 1 and 4 and the team serves (every third
+ * rotation), `l6serve` says who serves: the back-court player (default) or his partner, who then swaps with him.
  */
 function backCourtSwap(s: Side, serving = false): Side {
   if (!s.l6 || s.l6front) return s;
@@ -149,15 +149,9 @@ function backCourtSwap(s: Side, serving = false): Side {
   if (i < 0) return s;
   const j = (i + 3) % 6;
   const swap = () => ({ ...s, pos: s.pos.map((p, k) => (k === i ? s.pos[j] : k === j ? s.pos[i] : p)) });
-  if (serving && s.l6serve === 'partner' && (i === 0 || i === 3)) {
-    // whose turn: spot roles stay with the spots, so position 1's role says whose serving turn it is
-    // (his own spot is the OPP one opposite a setter, else the L / MB2 spot)
-    const pair = [s.roles[i], s.roles[j]];
-    const own = pair.includes('S') && pair.includes('OPP') ? 'OPP' : pair.includes('L') ? 'L' : null;
-    const hisTurn = own !== null && s.roles[0] === own;
-    if (hisTurn) return i === 3 ? swap() : s;   // his own turn: he serves
-    return i === 0 ? swap() : s;                // his partner's turn: the partner serves, they swap after
-  }
+  // the pair reaches positions 1 and 4 every third rotation; in this mode the partner takes every one of
+  // those serves (he stands at 1, serves, then they swap), just as the back-court player otherwise does
+  if (serving && s.l6serve === 'partner' && (i === 0 || i === 3)) return i === 0 ? swap() : s;
   return i >= 1 && i <= 3 ? swap() : s;
 }
 
