@@ -214,6 +214,23 @@ function withMiddles(s: Side): Side {
   return mid ? { ...base, lib, mid } : base;
 }
 
+/**
+ * A six-player team's back-court player and his partner at positions 1 and 4, their team serving: the other
+ * one of the two could have taken the serve. Returns him and the court with the two swapped, switching the
+ * team's habit from this rally on (the back-court player serving ↔ his partner serving, then swapping).
+ */
+export function otherPairServer(c: CourtState): { p: string; court: CourtState } | null {
+  const s = c[c.serving];
+  if (!s.l6 || s.l6front) return null;
+  const i = s.pos.indexOf(s.l6);
+  if (i !== 0 && i !== 3) return null;
+  const p = s.pos[3];
+  if (!p) return null;
+  const { l6serve: _x, ...rest } = s;
+  const side: Side = { ...rest, pos: s.pos.map((x, k) => (k === 0 ? p : k === 3 ? s.pos[0] : x)), ...(p !== s.l6 ? { l6serve: 'partner' as const } : {}) };
+  return { p, court: { ...c, [c.serving]: side } };
+}
+
 /** Put player p at position 1 of their team (keeping everyone's order) and make that team serve. */
 export function makeServer(c: CourtState, p: string): CourtState {
   for (const t of TEAMS) {

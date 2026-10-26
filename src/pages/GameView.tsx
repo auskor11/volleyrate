@@ -19,7 +19,7 @@ import { logHistory, setGameRating, useGames, useHistory } from '../lib/games';
 import { useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
 import {
-  BACK_COURT_PLAYERS, ROLE_NAMES, TEAMS, assignMiddles, courtFor, guestServes, likelyLibero, sameCourt, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
+  BACK_COURT_PLAYERS, otherPairServer, ROLE_NAMES, TEAMS, assignMiddles, courtFor, guestServes, likelyLibero, sameCourt, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
   scoreSheet, server, setupReady, startCourt,
   type CourtSetup, type CourtState, type CourtView, type Team,
 } from '../lib/rotation';
@@ -586,9 +586,11 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
         const opts = ([prevServing, prevServing === 'a' ? 'b' : 'a'] as Team[]).map(w => {
           const v = courtFor(setup!, liveRallies.map(r => (r === prevLive ? { ...r, won: w } : r)), liveIdx);
           const sp = server(v.derived);
-          return { won: w, p: isGuest(sp) ? `guest-${v.derived.serving}` : sp, again: w === prevServing, court: v.derived };
+          // the back-court player and his partner at 1 and 4: either could serve (picking the other one switches the habit)
+          const alt = otherPairServer(v.derived);
+          return { won: w, p: isGuest(sp) ? `guest-${v.derived.serving}` : sp, again: w === prevServing, court: v.derived, alt };
         });
-        if (opts[0].p === opts[1].p) return [opts[0]];  // the previous rally's tags already decide it
+        if (opts[0].p === opts[1].p && opts[0].alt?.p === opts[1].alt?.p) return [opts[0]];  // the previous rally's tags already decide it
         // a camera behind a team can tell which end served: put that choice first (Y)
         const g = rally ? guessServe(rally.s) : null;
         return g?.sure && opts[1].won === g.team ? [{ ...opts[1], cam: true }, opts[0]] : g?.sure ? [{ ...opts[0], cam: true }, opts[1]] : opts;
@@ -892,6 +894,16 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
                       className={`${btn} ${chosen ? 'border-good text-good' : 'text-ink'}`}>
                       {'cam' in o && o.cam ? '📷 ' : '✓ '}{name(o.p)} {serveOptions.length > 1 ? (o.again ? 'again' : '· side-out') : 'serves'}
                       <span className="ml-1 hidden text-[10px] opacity-60 lg:inline">{i === 0 ? 'Y' : 'U'}</span>
+                    </button>
+                  );
+                })}
+                {serveOptions.filter(o => o.alt).map(o => {
+                  const chosen = rally?.touches?.[0]?.k === 'serve' && rally.touches[0].p === o.alt!.p;
+                  return (
+                    <button key={`alt-${o.won}`} onClick={() => good(o.alt!.p, o.alt!.court, serveOptions.length > 1 ? o.won : undefined)}
+                      title="The two of them swap: from this rally on, this player takes these serves"
+                      className={`${btn} ${o.won !== serveOptions[0].won ? 'col-start-3' : 'col-start-2'} ${chosen ? 'border-good text-good' : 'text-muted'}`}>
+                      ✓ {name(o.alt!.p)} {serveOptions.length > 1 ? (o.again ? 'again' : '· side-out') : 'serves'} instead
                     </button>
                   );
                 })}
