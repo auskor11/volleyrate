@@ -49,8 +49,10 @@ export const rotationOf = (roles: Position[]): number =>
  */
 export interface Side {
   pos: string[]; roles: Position[]; bench: string[]; mb?: string; lib?: string; mid?: [string, string];
-  l6?: string;        // six-player team: its libero-type player ('' = none)
-  l6front?: boolean;  // …who plays front court too (otherwise he swaps with the other middle at the front row)
+  l6?: string;        // six-player team: its back-court player ('' = none)
+  l6front?: boolean;  // …who plays front court too (otherwise he swaps with the player opposite him at the front row)
+  l6serve?: 'partner'; // …when his partner (the player opposite) is at position 1 to serve, the partner serves and
+                       //   they swap after the serve (otherwise the back-court player serves in his place)
 }
 
 /** Players who normally stay in the back court; preselected as a six-player team's libero-type player. */
@@ -68,6 +70,14 @@ const norm = (c: CourtState): CourtState => ({ ...c, a: normSide(c.a), b: normSi
 /** The role a player is playing at spot i. */
 export function roleAt(s: Side, i: number): string {
   const p = s.pos[i];
+  if (s.l6 && !s.l6front) {
+    // a back-court opposite and his setter swap spots, but keep their own roles wherever they stand
+    const k = s.pos.indexOf(s.l6), j = (k + 3) % 6;
+    if (k >= 0 && [s.roles[k], s.roles[j]].includes('S') && [s.roles[k], s.roles[j]].includes('OPP')) {
+      if (i === k) return 'OPP';
+      if (i === j) return 'S';
+    }
+  }
   if (p && s.l6 && p === s.l6) return s.l6front ? 'L/MB' : 'L';
   const middle = s.roles[i] === 'MB' || s.roles[i] === 'L';
   // libero system (in play, or chosen in the setup): whoever stands in a middle spot is the libero or a middle
@@ -128,13 +138,27 @@ const turn = <T,>(xs: T[], back = false): T[] => (back ? [xs[5], ...xs.slice(0, 
 export const rotate = (s: Side): Side => ({ ...s, pos: turn(s.pos), roles: turn(s.roles) });
 export const rotateBack = (s: Side): Side => ({ ...s, pos: turn(s.pos, true), roles: turn(s.roles, true) });
 
-/** A six-player team's back-court player swaps with the middle opposite him whenever he reaches the front row. */
-function backCourtSwap(s: Side): Side {
+/**
+ * A six-player team's back-court player swaps with the player opposite him (the other middle, or the setter)
+ * whenever he reaches the front row. When the pair is at positions 1 and 4 and the team serves, `l6serve`
+ * says who serves: the back-court player (default) or his partner, who then swaps with him after the serve.
+ */
+function backCourtSwap(s: Side, serving = false): Side {
   if (!s.l6 || s.l6front) return s;
   const i = s.pos.indexOf(s.l6);
-  if (i < 1 || i > 3) return s;
+  if (i < 0) return s;
   const j = (i + 3) % 6;
-  return { ...s, pos: s.pos.map((p, k) => (k === i ? s.pos[j] : k === j ? s.pos[i] : p)) };
+  const swap = () => ({ ...s, pos: s.pos.map((p, k) => (k === i ? s.pos[j] : k === j ? s.pos[i] : p)) });
+  if (serving && s.l6serve === 'partner' && (i === 0 || i === 3)) {
+    // whose turn: spot roles stay with the spots, so position 1's role says whose serving turn it is
+    // (his own spot is the OPP one opposite a setter, else the L / MB2 spot)
+    const pair = [s.roles[i], s.roles[j]];
+    const own = pair.includes('S') && pair.includes('OPP') ? 'OPP' : pair.includes('L') ? 'L' : null;
+    const hisTurn = own !== null && s.roles[0] === own;
+    if (hisTurn) return i === 3 ? swap() : s;   // his own turn: he serves
+    return i === 0 ? swap() : s;                // his partner's turn: the partner serves, they swap after
+  }
+  return i >= 1 && i <= 3 ? swap() : s;
 }
 
 /**
@@ -199,8 +223,12 @@ function withMiddles(s: Side): Side {
 /** Put player p at position 1 of their team (keeping everyone's order) and make that team serve. */
 export function makeServer(c: CourtState, p: string): CourtState {
   for (const t of TEAMS) {
-    const j = c[t].pos.indexOf(p);
-    if (j >= 0) return { ...c, [t]: { ...c[t], pos: [...c[t].pos.slice(j), ...c[t].pos.slice(0, j)], roles: [...c[t].roles.slice(j), ...c[t].roles.slice(0, j)] }, serving: t };
+    const s = c[t], j = s.pos.indexOf(p);
+    // the back-court player and his partner at positions 1 and 4: whoever served just swaps with the other
+    // (the rotation itself is right; only who took the serve differed)
+    if (c.serving === t && j === 3 && s.l6 && !s.l6front && (p === s.l6 || s.pos[0] === s.l6))
+      return { ...c, [t]: { ...s, pos: s.pos.map((x, k) => (k === 0 ? p : k === 3 ? s.pos[0] : x)) }, serving: t };
+    if (j >= 0) return { ...c, [t]: { ...s, pos: [...s.pos.slice(j), ...s.pos.slice(0, j)], roles: [...s.roles.slice(j), ...s.roles.slice(0, j)] }, serving: t };
   }
   return c;
 }
@@ -211,8 +239,8 @@ export function makeServer(c: CourtState, p: string): CourtState {
  */
 export const placeSpecialists = (c: CourtState): CourtState => ({
   ...c,
-  a: liberoRule(backCourtSwap(c.a), c.serving === 'a'),
-  b: liberoRule(backCourtSwap(c.b), c.serving === 'b'),
+  a: liberoRule(backCourtSwap(c.a, c.serving === 'a'), c.serving === 'a'),
+  b: liberoRule(backCourtSwap(c.b, c.serving === 'b'), c.serving === 'b'),
 });
 
 /** After the teams are re-entered at some rally: work out the middles and libero again from that lineup. */
@@ -225,7 +253,7 @@ export const assignMiddles = (c: CourtState): CourtState => ({ ...c, a: withMidd
 export const startCourt = (c: CourtSetup): CourtState => {
   const n = courtOnly(c);
   const side = (t: Team) => {
-    const s = withMiddles(backCourtSwap(n[t]));
+    const s = withMiddles(backCourtSwap(n[t], n.serving === t));
     const i = s.lib ? s.pos.indexOf(s.lib) : -1;
     const illegal = i >= 1 && i <= 3 || (i === 0 && n.serving === t);
     return illegal ? liberoRule(s, n.serving === t) : s;
@@ -258,7 +286,7 @@ function advance(c: CourtState, r: Rally): { next: CourtState; winner: Team | nu
   // side-out: the winners rotate and serve; the team that lost its serve gets its libero back
   const loser = other(winner);
   return {
-    next: { ...cur, [winner]: liberoRule(backCourtSwap(rotate(cur[winner])), true), [loser]: liberoRule(cur[loser], false), serving: winner },
+    next: { ...cur, [winner]: liberoRule(backCourtSwap(rotate(cur[winner]), true), true), [loser]: liberoRule(backCourtSwap(cur[loser]), false), serving: winner },
     winner,
   };
 }
@@ -306,7 +334,7 @@ function withDetails(hand: CourtState, from: CourtState): CourtState {
   const side = (t: Team): Side => {
     const h = normSide(hand[t]), f = from[t];
     return { ...h, ...(h.mb === undefined && f.mb ? { mb: f.mb } : {}), ...(h.lib === undefined && f.lib ? { lib: f.lib } : {}),
-      ...(h.mid === undefined && f.mid ? { mid: f.mid } : {}), ...(h.l6 === undefined && f.l6 !== undefined ? { l6: f.l6, ...(f.l6front ? { l6front: true } : {}) } : {}) };
+      ...(h.mid === undefined && f.mid ? { mid: f.mid } : {}), ...(h.l6 === undefined && f.l6 !== undefined ? { l6: f.l6, ...(f.l6front ? { l6front: true } : {}), ...(f.l6serve ? { l6serve: f.l6serve } : {}) } : {}) };
   };
   return { a: side('a'), b: side('b'), serving: hand.serving };
 }

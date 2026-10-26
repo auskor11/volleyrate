@@ -1417,7 +1417,7 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
   // the extra middle must be on the bench; nobody starts subbed in for the libero
   function tidy(x: CourtSetup): CourtSetup {
     const fix = (sd: CourtSetup['a']) => {
-      const { mb: mb0, lib, mid: _m, l6, l6front, ...rest } = sd;
+      const { mb: mb0, lib, mid: _m, l6, l6front, l6serve, ...rest } = sd;
       // the libero starts on the bench: the middle standing in the libero's spot is the one they swap with
       let mb = mb0;
       if (lib && sd.bench.includes(lib) && !(mb && mb !== lib && (sd.bench.includes(mb) || sd.pos.includes(mb)))) {
@@ -1436,14 +1436,16 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
       // no extra middle, so no libero: pick the libero-type player (Darius by default) if he's on court
       const pick = l6 !== undefined && (l6 === '' || sd.pos.includes(l6)) ? l6
         : sd.pos.find(p => BACK_COURT_PLAYERS.includes(p)) ?? '';
-      return { ...rest, l6: pick, ...(pick && l6front ? { l6front: true } : {}) };
+      return { ...rest, l6: pick, ...(pick && l6front ? { l6front: true } : {}), ...(pick && !l6front && l6serve ? { l6serve } : {}) };
     };
     return { ...x, a: fix(x.a), b: fix(x.b) };
   }
   const setMb = (t: Team, id: string | null) => setC(x => tidy({ ...x, [t]: { ...x[t], mb: id ?? undefined, ...(id && x[t].lib === id ? { lib: undefined } : {}) } }));
   // a sub who is the libero (starting on the bench while a middle plays in their place)
   const setLib = (t: Team, id: string | null) => setC(x => tidy({ ...x, [t]: { ...x[t], lib: id ?? undefined, mb: id ? undefined : x[t].mb } }));
-  const setL6 = (t: Team, id: string, front: boolean) => setC(x => tidy({ ...x, [t]: { ...x[t], l6: id, l6front: front } }));
+  const setL6 = (t: Team, id: string, front: boolean, serve?: 'partner') => setC(x => tidy({ ...x, [t]: { ...x[t], l6: id, l6front: front, l6serve: serve } }));
+  // the player opposite the back-court player (who he swaps with): the other middle, or the setter
+  const partnerOf = (t: Team) => { const s = c[t], i = s.l6 ? s.pos.indexOf(s.l6) : -1; return i >= 0 ? s.pos[(i + 3) % 6] : ''; };
   const sixes = TEAMS.filter(t => !c[t].mb && c[t].pos.every(Boolean));  // teams without a libero
   const ok = setupReady(c);
 
@@ -1553,7 +1555,7 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="w-14 text-muted">Team {t.toUpperCase()}</span>
                       <span className="text-muted">Back-court player</span>
-                      <select value={c[t].l6 ?? ''} onChange={e => setL6(t, e.target.value, !!c[t].l6front)}
+                      <select value={c[t].l6 ?? ''} onChange={e => setL6(t, e.target.value, !!c[t].l6front, c[t].l6serve)}
                         className="rounded-md border border-line bg-raised px-1.5 py-1 text-ink outline-none">
                         <option value="">None</option>
                         {c[t].pos.filter(p => p && p !== 'guest').map(p => <option key={p} value={p}>{name(p)}</option>)}
@@ -1563,9 +1565,20 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
                       <div className="flex flex-wrap items-center gap-1.5 pl-[3.875rem]">
                         <span className="text-muted">Plays front court?</span>
                         {[false, true].map(f => (
-                          <button key={String(f)} onClick={() => setL6(t, c[t].l6!, f)}
+                          <button key={String(f)} onClick={() => setL6(t, c[t].l6!, f, c[t].l6serve)}
                             className={`rounded-md border px-2 py-1 ${!!c[t].l6front === f ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>
-                            {f ? 'Yes (L/MB)' : 'No: swaps with the other middle'}
+                            {f ? 'Yes (L/MB)' : `No: swaps with ${partnerOf(t) ? name(partnerOf(t)) : 'the player opposite'} at the front row`}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {c[t].l6 && !c[t].l6front && (
+                      <div className="flex flex-wrap items-center gap-1.5 pl-[3.875rem]">
+                        <span className="text-muted">When {partnerOf(t) ? name(partnerOf(t)) : 'his partner'} is at 1 to serve</span>
+                        {([undefined, 'partner'] as const).map(v => (
+                          <button key={v ?? 'l6'} onClick={() => setL6(t, c[t].l6!, false, v)}
+                            className={`rounded-md border px-2 py-1 ${c[t].l6serve === v ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>
+                            {v ? `${partnerOf(t) ? name(partnerOf(t)) : 'Partner'} serves, then they swap` : `${name(c[t].l6!)} serves instead`}
                           </button>
                         ))}
                       </div>
