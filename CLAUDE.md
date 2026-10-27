@@ -17,7 +17,8 @@ Anything touching `src/lib/engine.ts`, `src/lib/stats.ts`, `src/lib/ratings.ts`,
 - `npm run build` immediately before `npx firebase deploy --only hosting` (add `,firestore:rules` when the
   rules changed). Then confirm the live bundle contains the change, e.g.
   `curl -s https://volleyrate-f03aa.web.app/ | grep -o 'assets/index-[^"]*\.js'` and grep that file.
-- Test Firestore rule changes before deploying them.
+- Test Firestore rule changes before deploying them: `npm run test:rules` (add cases to scripts/test-rules.mjs).
+- Before changing stored data, back it up: `npm run backup` (see docs/backups.md).
 
 ## Data and privacy
 - Never commit or deploy `private/` (roster emails) or `.ratings-check/` (a copy of the team's data).

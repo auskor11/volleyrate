@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react';
-import {
-  addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc,
-} from 'firebase/firestore';
+import { useEffect, useMemo, useState } from 'react';
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { CourtSetup, CourtState, LegacyLineup, Team } from './rotation';
 import type { Angle, CameraKind } from './cameras';
@@ -211,24 +209,68 @@ export function suggestTouches(peaks: number[] | undefined, s: number, e: number
   return kept.sort((a, b) => a - b);
 }
 
-export function useGames() {
-  const [games, setGames] = useState<Game[] | null>(null);
-  useEffect(() => onSnapshot(query(collection(db, 'games'), orderBy('date', 'desc')),
-    s => setGames(s.docs.map(d => ({ id: d.id, ...d.data() }) as Game))), []);
-  return games;
+/**
+ * Detector data (contact sounds, rally candidates, serve signatures; about half of a game's size) lives in
+ * gameData/{game id}, so lists of games load fast; only the game page and Admin training read it. Games saved
+ * before the split may still carry it on the game itself: both are read, gameData winning.
+ */
+type Heavy = Pick<Game, 'peaks' | 'segments' | 'serves'>;
+export interface GameData extends Heavy { angles?: Record<string, Heavy> }
+const HEAVY = ['peaks', 'segments', 'serves'] as const;
+const heavyOf = (x: Partial<Heavy>): Heavy => Object.fromEntries(HEAVY.filter(k => x[k] !== undefined).map(k => [k, x[k]])) as Heavy;
+const lightOf = <T extends object>(x: T): T => Object.fromEntries(Object.entries(x).filter(([k]) => !(HEAVY as readonly string[]).includes(k))) as T;
+
+export function withData(g: Game, d: GameData | null | undefined): Game {
+  if (!d) return g;
+  return { ...g, ...heavyOf(d), ...(g.angles ? { angles: g.angles.map(a => ({ ...a, ...heavyOf(d.angles?.[a.id] ?? {}) })) } : {}) };
 }
 
+/** All games, newest first. `detector`: with their detector data too (Admin's training only). */
+export function useGames(opts?: { detector?: boolean }) {
+  const [games, setGames] = useState<Game[] | null>(null);
+  const [data, setData] = useState<Record<string, GameData> | null>(null);
+  const want = !!opts?.detector;
+  useEffect(() => onSnapshot(query(collection(db, 'games'), orderBy('date', 'desc')),
+    s => setGames(s.docs.map(d => ({ id: d.id, ...d.data() }) as Game))), []);
+  useEffect(() => {
+    if (!want) return;
+    return onSnapshot(collection(db, 'gameData'), s => setData(Object.fromEntries(s.docs.map(d => [d.id, d.data() as GameData]))), () => setData({}));
+  }, [want]);
+  return useMemo(() => (games && want ? (data ? games.map(g => withData(g, data[g.id])) : null) : games), [games, data, want]);
+}
+
+/** One game, with its detector data (when the viewer may read it). */
 export function useGame(id: string | undefined) {
   const [game, setGame] = useState<Game | null | undefined>(undefined);
+  const [data, setData] = useState<GameData | null>(null);
   useEffect(() => {
     if (!id) return;
     return onSnapshot(doc(db, 'games', id), s => setGame(s.exists() ? ({ id: s.id, ...s.data() }) as Game : null));
   }, [id]);
-  return game;
+  useEffect(() => {
+    if (!id) return;
+    setData(null);
+    return onSnapshot(doc(db, 'gameData', id), s => setData(s.exists() ? (s.data() as GameData) : null), () => setData(null));  // guests can't read it
+  }, [id]);
+  return useMemo(() => (game ? withData(game, data) : game), [game, data]);
+}
+
+/** Split a game change into the game's own fields and its detector data. */
+function split(patch: Partial<Game>): { light: Partial<Game>; heavy: GameData | null } {
+  const heavy: GameData = heavyOf(patch);
+  const light: Partial<Game> = lightOf(patch);
+  if (patch.angles) {
+    light.angles = patch.angles.map(a => lightOf(a));
+    const per = Object.fromEntries(patch.angles.map(a => [a.id, heavyOf(a)]).filter(([, h]) => Object.keys(h as object).length));
+    if (Object.keys(per).length) heavy.angles = per;
+  }
+  return { light, heavy: Object.keys(heavy).length ? heavy : null };
 }
 
 export async function createGame(g: Omit<Game, 'id'>): Promise<string> {
-  const ref = await addDoc(collection(db, 'games'), { ...g, createdAt: serverTimestamp() });
+  const { light, heavy } = split(g as Partial<Game>);
+  const ref = await addDoc(collection(db, 'games'), { ...light, createdAt: serverTimestamp() });
+  if (heavy) await setDoc(doc(db, 'gameData', ref.id), heavy);
   return ref.id;
 }
 
@@ -238,10 +280,15 @@ export async function saveRallies(id: string, rallies: Rally[]) {
 }
 
 export async function updateGame(id: string, patch: Partial<Pick<Game, 'title' | 'date' | 'reviewed' | 'peaks' | 'segments' | 'court' | 'angles' | 'camera' | 'cameraName' | 'behind' | 'net' | 'serves'>>) {
-  await updateDoc(doc(db, 'games', id), patch);
+  const { light, heavy } = split(patch);
+  if (heavy) await setDoc(doc(db, 'gameData', id), heavy, { merge: true });
+  if (Object.keys(light).length) await updateDoc(doc(db, 'games', id), light);
 }
 
-export const deleteGame = (id: string) => deleteDoc(doc(db, 'games', id));
+export const deleteGame = async (id: string) => {
+  await deleteDoc(doc(db, 'gameData', id)).catch(() => {});
+  await deleteDoc(doc(db, 'games', id));
+};
 
 export const liveRallies = (g: Game) => g.rallies.filter(r => r.st !== 'bad');
 export const round1 = (t: number) => Math.round(t * 10) / 10;

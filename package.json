@@ -9,6 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "backup": "node scripts/backup-db.mjs",
+    "test:rules": "node scripts/test-rules.mjs",
     "restore": "node scripts/restore-db.mjs",
     "ratings:snapshot": "node scripts/ratings-check.mjs snapshot",
     "ratings:diff": "node scripts/ratings-check.mjs diff",

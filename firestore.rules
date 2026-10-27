@@ -74,6 +74,14 @@ service cloud.firestore {
         || (exists(memberPath()) && get(memberPath()).data.get('playerId', '') == resource.data.playerId);
     }
 
+    // Detector data per game (contact sounds, rally candidates, serve signatures): the game page and Admin
+    // training read it; whoever can edit games writes it. Kept out of the public game records to keep them light.
+    match /gameData/{gameId} {
+      allow read: if isMember();
+      allow create, update: if canEdit();
+      allow delete: if isAdmin();
+    }
+
     // Access requests: someone signed in who isn't on the list asks to be an editor or a player
     // (doc id = their email). They can see and withdraw their own; admins see all and approve or dismiss.
     match /accessRequests/{reqEmail} {

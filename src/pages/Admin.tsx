@@ -47,7 +47,7 @@ export function Admin() {
 function RatingsEditor() {
   const { user } = useAuth();
   const { players } = usePlayers();
-  const games = useGames();
+  const games = useGames({ detector: true });
   const settings = useEngineSettings();
   const model = games ? buildModel(games, settings) : null;
   const [importMsg, setImportMsg] = useState('');
@@ -356,7 +356,7 @@ function EvalRow({ label, e }: { label: string; e: Eval }) {
 
 function Detector() {
   const { user } = useAuth();
-  const games = useGames();
+  const games = useGames({ detector: true });
   const [kind, setKind] = useState<CameraKind>('side');  // each kind of camera has its own detector
   const [info, setInfo] = useState<Awaited<ReturnType<typeof activeModelInfo>>>(null);
   const [res, setRes] = useState<{ model: Model; n: number; cur: Eval; next: Eval } | null>(null);
@@ -494,7 +494,7 @@ function TouchSuggestionScore({ games }: { games: Game[] }) {
 function Sensitivity({ saved }: { saved: EngineSettings }) {
   const { user } = useAuth();
   const { players: raw } = usePlayers();
-  const allGames = useGames();
+  const allGames = useGames({ detector: true });
   const [s, setS] = useState<EngineSettings>(saved);
   const [msg, setMsg] = useState('');
   useEffect(() => { setS(saved); }, [JSON.stringify(saved)]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -570,7 +570,7 @@ function Sensitivity({ saved }: { saved: EngineSettings }) {
 
 /** Tagged games whose stats don't count yet. */
 function PendingGames() {
-  const games = useGames();
+  const games = useGames({ detector: true });
   const pending = (games ?? []).filter(g => g.rating && !g.rating.applied && g.rallies.some(r => r.touches?.length && r.end));
   if (!pending.length) return null;
   return (
@@ -592,7 +592,7 @@ function Backups() {
   const { user } = useAuth();
   const list = useBackups(true);
   const { players } = usePlayers();
-  const games = useGames();
+  const games = useGames({ detector: true });
   const settings = useEngineSettings();
   const [msg, setMsg] = useState('');
   const fmt = (d?: Date) => d ? d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '…';
