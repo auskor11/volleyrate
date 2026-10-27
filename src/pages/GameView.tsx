@@ -779,6 +779,29 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
   };
 
   // the rally list: in the middle column, or under the video while tagging on a wide screen
+  // Review: rallies that need a fix (no winner, no confirmed server, or a server the hand-set court disagrees with)
+  const attention = useMemo(() => {
+    const out = new Map<Rally, string[]>();
+    if (mode !== 'review' || !teamsReady || !setup) return out;
+    liveRallies.forEach((r, i) => {
+      const why: string[] = [];
+      const sv = r.touches?.[0]?.k === 'serve' ? r.touches[0].p : null;
+      if (!sv && r.st !== 'auto') why.push('no server');
+      if (i < liveRallies.length - 1 && r.st !== 'auto' && r.won === undefined && !(r.touches?.length && r.end)) why.push('no winner');
+      if (sv && !isGuest(sv) && r.court?.manual) {
+        const v = courtFor(setup, liveRallies, i);
+        if (server(v.state) !== sv) why.push(`court says ${name(server(v.state))} serves`);
+      }
+      if (why.length) out.set(r, why);
+    });
+    return out;
+  }, [mode, teamsReady, setup, liveRallies]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const nextAttention = () => {
+    const idx = list.map((r, i) => (attention.has(r) ? i : -1)).filter(i => i >= 0);
+    const n = idx.find(i => i > cur) ?? idx[0];
+    if (n !== undefined) go(n);
+  };
+
   const rallyList = (ref: RefObject<HTMLOListElement | null>, cls: string, compact = false) => (
     <ol ref={ref} className={`${cls} divide-y divide-line overflow-y-auto overscroll-contain rounded-xl border border-line bg-surface`}>
       {list.map((r, i) => {
@@ -804,6 +827,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
                 <span className="ml-1 text-xs text-ball" title={`Highlight for ${starred(r).map(h => players?.find(p => p.id === h.playerId)?.name ?? h.playerId).join(', ')}`}>★</span>
               )}
             </span>
+            {mode === 'review' && attention.has(r) && <span className="rounded-full bg-ball/20 px-2 py-0.5 text-xs text-ball" title={attention.get(r)!.join(' · ')}>⚠ {attention.get(r)!.join(' · ')}</span>}
             {mode === 'review' && <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS[r.st].cls}`}>{STATUS[r.st].label}</span>}
             {mode !== 'review' && (() => {
               const res = rallyResult(r, sameTeamIn(game));
@@ -1074,6 +1098,13 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
               score={rally ? scoreAt.get(rally)?.before : undefined} missed={rally ? notCounted(liveRallies.indexOf(rally)) : 0} />
             </div>
           </details>
+        )}
+
+        {mode === 'review' && attention.size > 0 && (
+          <div className="flex shrink-0 items-center gap-2 rounded-lg border border-ball/40 bg-ball/10 px-3 py-1.5 text-sm">
+            <span className="flex-1">⚠ <b>{attention.size}</b> {attention.size === 1 ? 'rally needs' : 'rallies need'} a fix <span className="text-xs text-muted">(missing winner or server)</span></span>
+            <button onClick={nextAttention} className="rounded-md border border-ball/60 px-2.5 py-1 text-xs font-semibold text-ball">Next ⚠</button>
+          </div>
         )}
 
         {mode === 'review' && !game.reviewed && (

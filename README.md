@@ -30,6 +30,17 @@
 
 Everything runs on free tiers: Firebase Spark and YouTube. No servers to pay for.
 
+## Also in the app
+
+- **Stats** (`/stats`): season leaderboards for any range of Saturdays, and attendance with streaks.
+- **Compare** (`/compare`): two players side by side, their record together and against each other.
+- **Session recaps** (`/sessions/<date>`): MVPs, session ratings, leaders, milestones, plays to watch, rating changes.
+- **Game ratings**: a 0–10 score per player per game with MVPs and medals (docs/ratings.md §8).
+- **Shareable pictures**: a player's card or a session recap as a PNG.
+- **Offline**: the app is kept on the device (public/sw.js); a game's video can be saved on a phone
+  ("Save for offline"; `npm run shrink -- <video>` makes a phone-sized copy) and then plays without internet.
+- **Backups**: `npm run backup` / `npm run restore` (docs/backups.md).
+
 ## Tech
 
 - **App:** React 19, TypeScript, Vite, Tailwind CSS v4, React Router. Installable as a PWA.
