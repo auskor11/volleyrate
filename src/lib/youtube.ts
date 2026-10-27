@@ -1,4 +1,5 @@
-// Minimal YouTube IFrame API wrapper.
+// Minimal YouTube IFrame API wrapper, plus the same interface over a <video> for videos saved on the device.
+import { localVideoUrl } from './offline';
 
 export interface YTPlayer {
   playVideo(): void;
@@ -48,7 +49,14 @@ export function parseYouTubeId(input: string): string | null {
   return null;
 }
 
+/** A player for this video: the copy saved on this device when there is one (offline), else YouTube. */
 export async function createPlayer(el: HTMLElement, videoId: string, onStateChange?: (state: number) => void): Promise<YTPlayer> {
+  const local = await localVideoUrl(videoId);
+  if (local) return localPlayer(el, local, onStateChange);
+  return youTubePlayer(el, videoId, onStateChange);
+}
+
+async function youTubePlayer(el: HTMLElement, videoId: string, onStateChange?: (state: number) => void): Promise<YTPlayer> {
   await loadYouTubeApi();
   return new Promise(resolve => {
     const p: YTPlayer = new window.YT!.Player(el, {
@@ -79,4 +87,51 @@ export function withOffset(p: YTPlayer, offset: () => number): YTPlayer {
     loadVideoById: o => p.loadVideoById(o),
     destroy: () => p.destroy(),
   };
+}
+
+/**
+ * The YouTube player's interface over a <video> playing a saved copy (states as YouTube's: 1 playing,
+ * 2 paused, 0 ended, 3 buffering). Loading another video uses its saved copy; one that isn't saved shows a note.
+ */
+function localPlayer(host: HTMLElement, url: string, onStateChange?: (state: number) => void): Promise<YTPlayer> {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:relative;width:100%;height:100%;background:#000';
+  const v = document.createElement('video');
+  v.playsInline = true; v.controls = true; v.preload = 'auto';
+  v.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000';
+  const note = document.createElement('div');
+  note.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:16px;text-align:center;color:#ccc;font:14px system-ui';
+  const badge = document.createElement('div');
+  badge.textContent = '📥 Saved copy';
+  badge.style.cssText = 'position:absolute;left:8px;top:8px;padding:2px 8px;border-radius:6px;background:#0009;color:#ddd;font:12px system-ui;pointer-events:none';
+  box.append(v, note, badge);
+  host.replaceWith(box);
+  const urls = [url];
+  let endAt: number | null = null;
+  const state = () => (v.ended ? 0 : v.paused ? 2 : v.readyState < 3 ? 3 : 1);
+  for (const ev of ['play', 'playing', 'pause', 'ended', 'waiting']) v.addEventListener(ev, () => onStateChange?.(state()));
+  v.addEventListener('timeupdate', () => { if (endAt !== null && v.currentTime >= endAt) { endAt = null; v.pause(); onStateChange?.(0); } });
+  const p: YTPlayer = {
+    playVideo: () => { void v.play().catch(() => {}); },
+    pauseVideo: () => v.pause(),
+    seekTo: t => { v.currentTime = Math.max(0, t); },
+    getCurrentTime: () => v.currentTime,
+    getDuration: () => (Number.isFinite(v.duration) ? v.duration : 0),
+    getPlayerState: state,
+    loadVideoById: o => {
+      void localVideoUrl(o.videoId).then(u => {
+        if (!u) { v.pause(); v.style.visibility = 'hidden'; note.style.display = 'flex'; note.textContent = "This game's video isn't saved on this device."; return; }
+        urls.push(u); note.style.display = 'none'; v.style.visibility = 'visible';
+        endAt = o.endSeconds ?? null;
+        v.src = u;
+        v.addEventListener('loadedmetadata', () => { v.currentTime = o.startSeconds ?? 0; void v.play().catch(() => {}); }, { once: true });
+      });
+    },
+    destroy: () => { v.pause(); v.removeAttribute('src'); v.load(); box.remove(); urls.forEach(u => URL.revokeObjectURL(u)); },
+  };
+  return new Promise(resolve => {
+    v.addEventListener('loadedmetadata', () => resolve(p), { once: true });
+    v.addEventListener('error', () => resolve(p), { once: true });
+    v.src = url;
+  });
 }

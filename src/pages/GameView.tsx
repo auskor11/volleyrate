@@ -26,6 +26,7 @@ import {
 import { HighlightDialog, ShareRally } from '../components/RallyActions';
 import { AutoplaySwitch, useAutoplay } from '../components/ClipReel';
 import { Avatar } from '../components/Avatar';
+import { fileDuration, fmtSize, removeVideo, saveVideo, useSavedVideos, type SavedVideo } from '../lib/offline';
 import { MatchCard } from '../components/MatchCard';
 import { matchRatings } from '../lib/gameRating';
 import { Court } from '../components/Court';
@@ -884,6 +885,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
               🎥 {cameraLabel(c)}
             </button>
           ))}
+          {!samplePlayers && <OfflineButton cam={cam} title={game.title} duration={cam.id === 'main' ? game.duration : undefined} />}
           {!samplePlayers && canEdit && <button onClick={() => setAddingCam(true)} className="rounded-md border border-dashed border-line px-2.5 py-1 text-muted">+ Add camera</button>}
           {!samplePlayers && canEdit && (
             <button onClick={() => setRefreshing(true)} className="rounded-md border border-dashed border-line px-2.5 py-1 text-muted"
@@ -1804,3 +1806,84 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
   );
 }
 
+
+/** Save this camera's video on the device for watching offline (or say it's saved, and how big). */
+function OfflineButton({ cam, title, duration }: { cam: { youtubeId: string; name: string }; title: string; duration?: number }) {
+  const saved = useSavedVideos();
+  const [open, setOpen] = useState(false);
+  const mine = saved?.find(v => v.id === cam.youtubeId);
+  return (
+    <>
+      <button onClick={() => setOpen(true)} title="Keep this video on this device to watch without internet"
+        className={`rounded-md border px-2.5 py-1 ${mine ? 'border-good/50 text-good' : 'border-dashed border-line text-muted'}`}>
+        {mine ? `📥 Saved · ${fmtSize(mine.size)}` : '⬇ Save for offline'}
+      </button>
+      {open && <OfflineDialog youtubeId={cam.youtubeId} title={`${title}${cam.name && cam.name !== 'Side' ? ` · ${cam.name}` : ''}`} duration={duration} saved={mine} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function OfflineDialog({ youtubeId, title, duration, saved, onClose }: {
+  youtubeId: string; title: string; duration?: number; saved?: SavedVideo; onClose: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [warn, setWarn] = useState('');
+  const [progress, setProgress] = useState<number | null>(null);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
+  const [space, setSpace] = useState<{ usage: number; quota: number } | null>(null);
+  useEffect(() => { navigator.storage?.estimate?.().then(e => e.quota ? setSpace({ usage: e.usage ?? 0, quota: e.quota }) : null).catch(() => {}); }, [done, saved]);
+  const pick = async (f: File) => {
+    setFile(f); setError(''); setWarn('');
+    const d = await fileDuration(f);
+    if (d && duration && Math.abs(d - duration) > 5) setWarn(`This file is ${fmtTime(d)} long but the game's video is ${fmtTime(duration)}. Rally times would be off unless it's the same recording.`);
+  };
+  const save = async () => {
+    if (!file) return;
+    setError(''); setProgress(0);
+    try { await saveVideo(youtubeId, title, file, setProgress); setDone(true); }
+    catch (e) { setError(`Couldn't save it: ${(e as Error).message}. The phone may be out of space.`); }
+    finally { setProgress(null); }
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center" onClick={progress === null ? onClose : undefined}>
+      <div className="w-full max-w-md space-y-3 rounded-t-2xl border border-line bg-surface p-4 text-sm sm:rounded-2xl" onClick={e => e.stopPropagation()}>
+        <h2 className="text-base font-semibold">Watch offline</h2>
+        {saved && !done ? (
+          <>
+            <p className="text-muted">Saved on this device ({fmtSize(saved.size)}, {new Date(saved.savedAt).toLocaleDateString()}). This game plays from the saved copy, with or without internet.</p>
+            <button onClick={async () => { await removeVideo(youtubeId); onClose(); location.reload(); }} className="w-full rounded-lg border border-line py-2.5 text-bad">Remove from this device</button>
+          </>
+        ) : done ? (
+          <>
+            <p><span className="text-good">✓ Saved.</span> <span className="text-muted">Reload the page and this game plays from the saved copy, even with no internet.</span></p>
+            <button onClick={() => location.reload()} className="w-full rounded-lg bg-ball py-2.5 font-semibold text-bg">Reload now</button>
+          </>
+        ) : (
+          <>
+            <ol className="list-decimal space-y-1 pl-5 text-muted">
+              <li>On your Mac, make a phone-sized copy: <code className="text-ink">npm run shrink -- "game video.mp4"</code> (about 0.75 GB for a 40-minute game).</li>
+              <li>AirDrop it to this phone and save it to Files.</li>
+              <li>Pick it below. Use the home-screen app: Safari can clear a website's saved files if it isn't opened for a week.</li>
+            </ol>
+            <label className="block cursor-pointer rounded-lg border-2 border-dashed border-line p-3 text-center hover:border-muted">
+              {file ? `${file.name} · ${fmtSize(file.size)}` : "Choose this game's video file"}
+              <input type="file" accept="video/*" className="hidden" disabled={progress !== null} onChange={e => e.target.files?.[0] && pick(e.target.files[0])} />
+            </label>
+            {warn && <p className="text-ball">{warn}</p>}
+            {progress !== null && (
+              <div>
+                <div className="h-2 overflow-hidden rounded-full bg-raised"><div className="h-full bg-ball transition-all" style={{ width: `${Math.round(progress * 100)}%` }} /></div>
+                <p className="mt-1 text-xs text-muted">Saving… {Math.round(progress * 100)}%. Keep this screen open.</p>
+              </div>
+            )}
+            <button disabled={!file || progress !== null} onClick={save} className="w-full rounded-lg bg-ball py-2.5 font-semibold text-bg disabled:opacity-40">Save on this device</button>
+          </>
+        )}
+        {error && <p className="text-bad">{error}</p>}
+        {space && <p className="text-xs text-muted">This app is using {fmtSize(space.usage)} of the {fmtSize(space.quota)} it can store on this device.</p>}
+        <button onClick={onClose} disabled={progress !== null} className="w-full rounded-lg border border-line py-2.5 disabled:opacity-40">Close</button>
+      </div>
+    </div>
+  );
+}
