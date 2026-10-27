@@ -17,6 +17,7 @@ export interface Member {
   email: string;
   playerId: string | null;
   role: 'admin' | 'player' | 'editor' | 'viewer';  // editor: reviews and tags games; viewer: watches only
+  lastSeen?: { toDate(): Date };  // when they last opened the app (signed in)
 }
 
 export function usePlayers() {

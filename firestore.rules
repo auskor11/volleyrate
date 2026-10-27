@@ -36,10 +36,16 @@ service cloud.firestore {
     }
 
     // Team list: doc id = lowercase Google email -> { playerId, role }
+    // Each person may stamp their own "last seen" (the server's time, nothing else); admins change the rest.
     match /members/{memberEmail} {
       allow get: if signedIn() && (memberEmail == email() || isAdmin());
       allow list: if isAdmin();
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        signedIn() && memberEmail == email()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeen'])
+        && request.resource.data.lastSeen == request.time
+      );
     }
 
     // Players can change the positions on their own profile (primary first), and anyone on the team can

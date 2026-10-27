@@ -3,7 +3,7 @@ import {
   GoogleAuthProvider, getRedirectResult, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut,
   type User,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import type { Member } from './data';
 
@@ -73,6 +73,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
   }, []);
+
+  // "last seen": stamp the team-list entry when the app opens or comes back to the front (at most every 30 min)
+  useEffect(() => {
+    const email = user?.email?.toLowerCase();
+    if (!email || !member) return;
+    const KEY = `volleyrate.lastSeen.${email}`;
+    const stamp = () => {
+      if (document.visibilityState !== 'visible') return;
+      let last = 0;
+      try { last = Number(localStorage.getItem(KEY)) || 0; } catch { /* storage blocked */ }
+      if (Date.now() - last < 30 * 60 * 1000) return;
+      try { localStorage.setItem(KEY, String(Date.now())); } catch { /* storage blocked */ }
+      updateDoc(doc(db, 'members', email), { lastSeen: serverTimestamp() }).catch(() => {});
+    };
+    stamp();
+    document.addEventListener('visibilitychange', stamp);
+    return () => document.removeEventListener('visibilitychange', stamp);
+  }, [user?.email, !!member]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const value: AuthState = {
     user, member, loading, error,

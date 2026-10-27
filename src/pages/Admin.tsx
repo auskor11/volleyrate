@@ -234,6 +234,17 @@ function Roster() {
   );
 }
 
+/** "5 min ago", "3 h ago", "yesterday", "12 Oct". */
+function ago(d: Date): string {
+  const m = Math.round((Date.now() - d.getTime()) / 60000);
+  if (m < 2) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  if (m < 24 * 60) return `${Math.round(m / 60)} h ago`;
+  if (m < 48 * 60) return 'yesterday';
+  if (m < 7 * 24 * 60) return `${Math.round(m / 1440)} days ago`;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
 const ROLES: { k: Member['role']; label: string; what: string }[] = [
   { k: 'viewer', label: 'Viewer', what: 'like a guest, but signed in (also sees highlights); changes nothing' },
   { k: 'editor', label: 'Editor', what: 'a viewer who also reviews rallies and tags games' },
@@ -321,7 +332,10 @@ function Access() {
         <ul className="mt-2 divide-y divide-line text-sm">
           {members.map(m => (
             <li key={m.email} className="flex items-center gap-2 py-2">
-              <span className="min-w-0 flex-1 truncate">{m.email}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{m.email}</span>
+                <span className="block text-[11px] text-muted">{m.lastSeen ? `last seen ${ago(m.lastSeen.toDate())}` : 'not seen since last seen was added'}</span>
+              </span>
               <select className={`rounded-md border px-2 py-1 text-sm ${m.role === 'admin' ? 'border-ball/50 bg-ball/10 text-ball' : 'border-line bg-raised'}`}
                 value={m.role} aria-label="Role"
                 onChange={e => { const r = e.target.value as Member['role']; if (r !== 'admin' || confirm(`Make ${m.email} an admin? Admins can change everything, including ratings and who has access.`)) setMember(m.email, m.playerId, r); }}>

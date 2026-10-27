@@ -74,6 +74,16 @@ t('outsider withdraws own request', outsider, 'delete', 'accessRequests/new@x.co
 t('player lists requests', player, 'list', 'accessRequests/x', 'DENY');
 t('admin lists requests', admin, 'list', 'accessRequests/x', 'ALLOW');
 
+// "last seen": only your own entry, only that field, only the server's time
+const me = { playerId: 'austin', role: 'player' };
+t('stamp own last seen', player, 'update', 'members/p@x.com', 'ALLOW', { ...me, lastSeen: TIME }, me);
+t('stamp a wrong time', player, 'update', 'members/p@x.com', 'DENY', { ...me, lastSeen: '2020-01-01T00:00:00Z' }, me);
+t('raise own role', player, 'update', 'members/p@x.com', 'DENY', { ...me, role: 'admin', lastSeen: TIME }, me);
+t("stamp someone else's", player, 'update', 'members/other@x.com', 'DENY', { ...me, lastSeen: TIME }, me);
+t('guest stamps', guest, 'update', 'members/p@x.com', 'DENY', { ...me, lastSeen: TIME }, me);
+t('player adds a member', player, 'create', 'members/new@x.com', 'DENY', { role: 'admin' });
+t('admin changes a role', admin, 'update', 'members/other@x.com', 'ALLOW', { ...me, role: 'editor' }, me);
+
 const r = await fetch('https://firebaserules.googleapis.com/v1/projects/volleyrate-f03aa:test', {
   method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
   body: JSON.stringify({ source: { files: [{ name: 'firestore.rules', content: src }] }, testSuite: { testCases: cases.map(x => x.c) } }) });
