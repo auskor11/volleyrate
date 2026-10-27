@@ -8,6 +8,7 @@ import { RatingChart } from '../components/RatingChart';
 import { MedalBadge } from '../components/MatchCard';
 import { useMatchRatings } from '../lib/gameRating';
 import { partners } from '../lib/partners';
+import { markText, progressOf, useMilestones } from '../lib/milestones';
 import { fmtDay, useRatingHistory } from '../lib/history';
 import { HighlightDialog, ShareRally } from '../components/RallyActions';
 import { Link, useParams } from 'react-router-dom';
@@ -113,6 +114,7 @@ export function PlayerDetail() {
       <RatingHistorySection playerId={p.id} />
       <GameRatingsSection playerId={p.id} />
       <PartnersSection playerId={p.id} />
+      <MilestonesSection playerId={p.id} />
       {!isGuest && <Highlights playerId={p.id} name={p.name} />}
 
 
@@ -184,6 +186,35 @@ function PositionsEditor({ player }: { player: { id: string; name: string; posit
       </div>
       {error && <p className="text-bad">{error}</p>}
     </div>
+  );
+}
+
+function MilestonesSection({ playerId }: { playerId: string }) {
+  const m = useMilestones();
+  if (!m) return null;
+  const mine = m.reached.filter(r => r.player === playerId).reverse();
+  const prog = progressOf(m.totals[playerId]).filter(x => x.next !== null);
+  return (
+    <section className="rounded-xl border border-line bg-surface p-4 text-sm">
+      <h2 className="mb-2 font-display text-lg font-semibold">Milestones</h2>
+      {mine.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {mine.map(r => (
+            <Link key={`${r.key}${r.mark}`} to={`/sessions/${r.date}`} title={`Reached on ${fmtDay(r.date)}`}
+              className="rounded-full border border-ball/40 bg-ball/10 px-2.5 py-1 text-xs text-ball">{r.icon} {markText(r)}</Link>
+          ))}
+        </div>
+      ) : <p className="text-muted">None yet: the first ones come at 25 kills, 10 aces, 5 Saturdays…</p>}
+      <div className="mt-3 grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+        {prog.map(x => (
+          <div key={x.key} className="flex items-center gap-2 text-xs">
+            <span className="w-4">{x.icon}</span>
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-raised"><div className="h-full rounded-full bg-ball" style={{ width: `${Math.round(100 * (x.value - x.prev) / Math.max(1, x.next! - x.prev))}%` }} /></div>
+            <span className="w-28 text-right tabular-nums text-muted">{x.value} / {x.next} {x.label}</span>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

@@ -10,6 +10,7 @@ import { Avatar } from '../components/Avatar';
 import { ClipReel } from '../components/ClipReel';
 import { MEDAL_COLOR, MedalBadge } from '../components/MatchCard';
 import { GAME_RATING, matchRatings, type Medal } from '../lib/gameRating';
+import { markText, useMilestones } from '../lib/milestones';
 
 const LEADERS: { k: StatKey; label: string }[] = [
   { k: 'kill', label: 'Kills' }, { k: 'ace', label: 'Aces' }, { k: 'assist', label: 'Assists' },
@@ -32,6 +33,7 @@ export function Session() {
   const games = useGames();
   const { players } = usePlayers();
   const h = useRatingHistory();
+  const marks = useMilestones();
   const [reel, setReel] = useState<StatKey | 'all'>('all');
   if (!games || !players || !h) return null;
   const k = h.sessions.indexOf(date);
@@ -66,6 +68,7 @@ export function Session() {
     const medal: Medal = id === sessionMvp?.id ? 'mvp' : avg >= GAME_RATING.medals.gold ? 'gold' : avg >= GAME_RATING.medals.silver ? 'silver' : 'bronze';
     return { id, avg, n: x.n, mvps: x.mvps, medal, short: x.n * 2 < matches.length };
   }).sort((a, b) => (b.medal === 'mvp' ? 1 : 0) - (a.medal === 'mvp' ? 1 : 0) || b.avg - a.avg || b.mvps - a.mvps);
+  const newMarks = (marks?.reached ?? []).filter(r => r.date === date && players.some(p => p.id === r.player));
   const rallies = dayGames.reduce((n, g) => n + g.rallies.filter(r => r.st !== 'bad').length, 0);
   // "All": every rally won by a kill, ace, block or set over, once each (a kill's assist is in its label)
   const compilation = dayGames.flatMap(g => {
@@ -175,6 +178,25 @@ export function Session() {
           })}
         </div>
       </section>
+
+      {newMarks.length > 0 && (
+        <section className={card}>
+          <h2 className="font-semibold">Milestones reached</h2>
+          <ul className="mt-2 space-y-2 text-sm">
+            {[...new Set(newMarks.map(r => r.player))].map(pid => (
+              <li key={pid} className="flex items-start gap-2">
+                <Avatar name={name(pid)} photo={photo(pid)} size={24} ring={0} />
+                <Link to={`/players/${pid}`} className="w-20 shrink-0 truncate pt-0.5 font-semibold">{name(pid)}</Link>
+                <span className="flex flex-wrap gap-1">
+                  {newMarks.filter(r => r.player === pid).map(r => (
+                    <span key={`${r.key}${r.mark}`} className="rounded-full border border-ball/40 bg-ball/10 px-2 py-0.5 text-xs text-ball">{r.icon} {markText(r)}</span>
+                  ))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className={card}>
         <div className="mb-2 flex flex-wrap items-center gap-1.5">
