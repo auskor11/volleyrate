@@ -1166,13 +1166,15 @@ function TagCourt({ view, setup, name, score, children }: {
       </div>
     );
   };
-  // each team seen from its own baseline: front row (4 3 2) at the net, back row (5 6 1) behind
+  // as the camera sees it: Team A on the far side (back row 1 6 5 at the top, front row 2 3 4 at the net),
+  // Team B on the near side (front row 4 3 2 at the net, back row 5 6 1 nearest the camera)
+  const rows: Record<Team, [number[], number[]]> = { a: [[0, 5, 4], [1, 2, 3]], b: [[3, 2, 1], [4, 5, 0]] };
   const team = (t: Team) => (
     <div className="min-w-0">
       <div className="mb-1 text-[11px] text-muted">Team {t.toUpperCase()}{c.serving === t ? ' · serving' : ''}</div>
-      <div className="grid grid-cols-3 gap-1">{[3, 2, 1].map(i => spot(t, i))}</div>
+      <div className="grid grid-cols-3 gap-1">{rows[t][0].map(i => spot(t, i))}</div>
       <div className="my-1 h-0.5 rounded bg-ink/30" />
-      <div className="grid grid-cols-3 gap-1">{[4, 5, 0].map(i => spot(t, i))}</div>
+      <div className="grid grid-cols-3 gap-1">{rows[t][1].map(i => spot(t, i))}</div>
     </div>
   );
   return (
