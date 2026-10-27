@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "backup": "node scripts/backup-db.mjs",
+    "restore": "node scripts/restore-db.mjs",
     "ratings:snapshot": "node scripts/ratings-check.mjs snapshot",
     "ratings:diff": "node scripts/ratings-check.mjs diff",
     "sync-detector": "cp rally-lab/web/{worker.js,analyze.js,detect.js,model.json,train_base.json} public/detector/ && cp rally-lab/web/vendor/* public/detector/vendor/"
