@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import { PhotoEditor } from '../components/Avatar';
@@ -7,6 +7,7 @@ import { ClipReel } from '../components/ClipReel';
 import { RatingChart } from '../components/RatingChart';
 import { MedalBadge } from '../components/MatchCard';
 import { useMatchRatings } from '../lib/gameRating';
+import { partners } from '../lib/partners';
 import { fmtDay, useRatingHistory } from '../lib/history';
 import { HighlightDialog, ShareRally } from '../components/RallyActions';
 import { Link, useParams } from 'react-router-dom';
@@ -111,6 +112,7 @@ export function PlayerDetail() {
       </section>
       <RatingHistorySection playerId={p.id} />
       <GameRatingsSection playerId={p.id} />
+      <PartnersSection playerId={p.id} />
       {!isGuest && <Highlights playerId={p.id} name={p.name} />}
 
 
@@ -182,6 +184,37 @@ function PositionsEditor({ player }: { player: { id: string; name: string; posit
       </div>
       {error && <p className="text-bad">{error}</p>}
     </div>
+  );
+}
+
+/** Who this player connects with: kills they set up and were set up for, and their best teammates. */
+function PartnersSection({ playerId }: { playerId: string }) {
+  const games = useGames();
+  const { players } = usePlayers();
+  const book = useMemo(() => (games ? partners(games) : null), [games]);
+  if (!book || !players) return null;
+  const name = (id: string) => players.find(p => p.id === id)?.name ?? id;
+  const top = (m: Record<string, number> | undefined) => Object.entries(m ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const setFor = top(book.assists[playerId]);
+  const setBy = top(Object.fromEntries(Object.entries(book.assists).map(([s, m]) => [s, m[playerId] ?? 0]).filter(([, n]) => (n as number) > 0)));
+  const mates = Object.entries(book.together[playerId] ?? {}).filter(([, r]) => r.games >= 2)
+    .sort((a, b) => b[1].won / b[1].games - a[1].won / a[1].games || b[1].games - a[1].games).slice(0, 3);
+  if (!setFor.length && !setBy.length && !mates.length) return null;
+  const list = (xs: [string, number][]) => xs.map(([id, n]) => <Link key={id} to={`/players/${id}`} className="mr-2 inline-block">{name(id)} <b className="text-ball">{n}</b></Link>);
+  return (
+    <section className="rounded-xl border border-line bg-surface p-4 text-sm">
+      <div className="mb-2 flex items-baseline justify-between">
+        <h2 className="font-display text-lg font-semibold">Partnerships</h2>
+        <Link to={`/compare?a=${playerId}`} className="text-xs text-ball">Compare with… →</Link>
+      </div>
+      {setFor.length > 0 && <p><span className="text-muted">Sets up kills for:</span> {list(setFor)}</p>}
+      {setBy.length > 0 && <p className="mt-1"><span className="text-muted">Kills set up by:</span> {list(setBy as [string, number][])}</p>}
+      {mates.length > 0 && (
+        <p className="mt-1"><span className="text-muted">Best record with:</span> {mates.map(([id, r]) => (
+          <Link key={id} to={`/compare?a=${playerId}&b=${id}`} className="mr-2 inline-block">{name(id)} <b className="text-good">{r.won}–{r.games - r.won}</b></Link>
+        ))}</p>
+      )}
+    </section>
   );
 }
 
