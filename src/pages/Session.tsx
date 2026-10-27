@@ -11,6 +11,7 @@ import { ClipReel } from '../components/ClipReel';
 import { MEDAL_COLOR, MedalBadge } from '../components/MatchCard';
 import { GAME_RATING, matchRatings, type Medal } from '../lib/gameRating';
 import { markText, useMilestones } from '../lib/milestones';
+import { recapImage, shareImage } from '../lib/shareImage';
 
 const LEADERS: { k: StatKey; label: string }[] = [
   { k: 'kill', label: 'Kills' }, { k: 'ace', label: 'Aces' }, { k: 'assist', label: 'Assists' },
@@ -34,6 +35,7 @@ export function Session() {
   const { players } = usePlayers();
   const h = useRatingHistory();
   const marks = useMilestones();
+  const [sharing, setSharing] = useState(false);
   const [reel, setReel] = useState<StatKey | 'all'>('all');
   if (!games || !players || !h) return null;
   const k = h.sessions.indexOf(date);
@@ -94,7 +96,22 @@ export function Session() {
         {next ? <Link to={`/sessions/${next}`} className="text-muted">{fmtDay(next)} →</Link> : <span />}
       </div>
       <div>
-        <h1 className="font-display text-3xl font-bold">{fmtDay(date, true)}</h1>
+        <div className="flex items-start justify-between gap-2">
+          <h1 className="font-display text-3xl font-bold">{fmtDay(date, true)}</h1>
+          <button className="mt-1 shrink-0 rounded-md border border-line px-2.5 py-1 text-xs disabled:opacity-50" disabled={sharing} onClick={async () => {
+            setSharing(true);
+            try {
+              const leaderOf = (s: StatKey, label: string) => { const t = top(s)[0]; return t ? [{ label, name: name(t.id), n: t.n }] : []; };
+              const blob = await recapImage({
+                date: fmtDay(date, true), games: dayGames.length, rallies,
+                mvp: sessionMvp ? { name: name(sessionMvp.id), photo: photo(sessionMvp.id), avg: sessionMvp.avg, mvps: sessionMvp.mvps } : undefined,
+                movers: movers.filter(m => m.d > 0).map(m => ({ name: name(m.id), before: m.before, after: m.after })),
+                leaders: [...leaderOf('kill', 'Kills'), ...leaderOf('ace', 'Aces'), ...leaderOf('assist', 'Assists'), ...leaderOf('blockpt', 'Blocks')],
+              });
+              await shareImage(blob, `volleyrate-${date}.png`, `Session recap ${fmtDay(date)}`);
+            } finally { setSharing(false); }
+          }}>{sharing ? 'Making picture…' : '↗ Share recap'}</button>
+        </div>
         <p className="text-sm text-muted">{dayGames.length} game{dayGames.length === 1 ? '' : 's'} · {rallies} rallies</p>
       </div>
 

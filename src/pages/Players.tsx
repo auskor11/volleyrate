@@ -9,6 +9,8 @@ import { MedalBadge } from '../components/MatchCard';
 import { useMatchRatings } from '../lib/gameRating';
 import { partners } from '../lib/partners';
 import { markText, progressOf, useMilestones } from '../lib/milestones';
+import { playerCardImage, shareImage } from '../lib/shareImage';
+import type { RatedPlayer } from '../lib/rated';
 import { fmtDay, useRatingHistory } from '../lib/history';
 import { HighlightDialog, ShareRally } from '../components/RallyActions';
 import { Link, useParams } from 'react-router-dom';
@@ -18,7 +20,7 @@ import { BLOCK_CREDIT, METRICS, experience, metricsFor, type RatingModel } from 
 import { fmtTime, useGames } from '../lib/games';
 import { savePositions, usePlayers } from '../lib/data';
 import { STAT_GROUPS, STAT_LABELS, avgGrade, computeStats, ratio, taggedGames, type StatKey } from '../lib/stats';
-import { CATEGORIES, POSITIONS, categoryScore, categoryWeights, overall, type Position } from '../lib/ratings';
+import { CATEGORIES, POSITIONS, categoryScore, categoryWeights, overall, tier, type Position } from '../lib/ratings';
 
 export function Players() {
   const { players, error } = useRatedPlayers();
@@ -73,12 +75,13 @@ export function PlayerDetail() {
     <div className="space-y-5">
       <Link to="/players" className="text-sm text-muted">← Players</Link>
       <PlayerCard player={p} size="lg" as={pos} />
-      {isMember && (
-        <div className="-mt-2 flex items-center justify-center gap-2 text-xs text-muted">
+      <div className="-mt-2 flex flex-wrap items-center justify-center gap-2 text-xs text-muted">
+        <ShareCardButton player={p} pos={pos} />
+        {isMember && <>
           <button className="rounded-md border border-line px-2.5 py-1 text-ink" onClick={() => setPhoto(true)}>📷 {p.photo ? 'Change photo' : 'Add photo'}</button>
           {p.photo && p.photoBy && <span>photo by {p.photoBy}</span>}
-        </div>
-      )}
+        </>}
+      </div>
       {photo && <PhotoEditor player={p} onClose={() => setPhoto(false)} />}
       <section className="rounded-xl border border-line bg-surface p-3">
         <p className="text-xs text-muted">Overall at each position (tap one to see the ratings weighted that way)</p>
@@ -187,6 +190,29 @@ function PositionsEditor({ player }: { player: { id: string; name: string; posit
       {error && <p className="text-bad">{error}</p>}
     </div>
   );
+}
+
+/** Share the player's card as a picture (phones: share sheet; computers: download). */
+function ShareCardButton({ player: p, pos }: { player: RatedPlayer; pos: Position }) {
+  const all = useMatchRatings();
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    setBusy(true);
+    try {
+      const ovr = overall(p.ratings, pos), before = overall(p.prev ?? p.base, pos);
+      const mine = (all ?? []).flatMap(({ result }) => result.rows.filter(r => r.id === p.id));
+      const avg = mine.length ? mine.reduce((t, r) => t + r.score, 0) / mine.length : null, mvps = mine.filter(r => r.medal === 'mvp').length;
+      const since = p.since && new Date(`${p.since}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+      const blob = await playerCardImage({
+        name: p.name, photo: p.photo, number: p.number, positions: pos !== (p.positions[0] ?? 'OH') ? `as ${pos}` : p.positions.join(' · '),
+        overall: ovr, tier: tier(ovr), change: ovr !== null && before !== null ? { diff: ovr - before, since: since || undefined } : undefined,
+        scores: CATEGORIES.map(c => [c.short, categoryScore(p.ratings, c.key, pos)]),
+        extra: avg !== null ? `Average game rating ${avg.toFixed(1)}${mvps ? ` · ${mvps} MVP${mvps === 1 ? '' : 's'}` : ''}` : undefined,
+      });
+      await shareImage(blob, `${p.name.replace(/\s+/g, '-')}-card.png`, `${p.name}'s card`);
+    } finally { setBusy(false); }
+  };
+  return <button disabled={busy} onClick={go} className="rounded-md border border-line px-2.5 py-1 text-ink disabled:opacity-50">{busy ? 'Making picture…' : '↗ Share card'}</button>;
 }
 
 function MilestonesSection({ playerId }: { playerId: string }) {
