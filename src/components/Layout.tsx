@@ -19,6 +19,7 @@ export function Logo({ className = 'h-7 w-7' }: { className?: string }) {
 const tabs = [
   { to: '/', label: 'Home', icon: 'M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z' },
   { to: '/players', label: 'Players', icon: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm8 1a3 3 0 1 0 0-6M2 21c0-4 3-7 7-7s7 3 7 7M17 14c3 0 5 2.5 5 6' },
+  { to: '/stats', label: 'Stats', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
   { to: '/games', label: 'Games', icon: 'M4 5h16v12H4zM8 21h8M10 9l5 3-5 3z' },
 ];
 const adminTab = { to: '/admin', label: 'Admin', icon: 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z' };

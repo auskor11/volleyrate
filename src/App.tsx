@@ -7,6 +7,7 @@ import { Home } from './pages/Home';
 import { AddGame, Games } from './pages/Games';
 import { PlayerDetail, Players } from './pages/Players';
 import { LatestSession, Session } from './pages/Session';
+import { Stats } from './pages/Stats';
 
 // the two biggest pages download only when opened
 const GameView = lazy(() => import('./pages/GameView').then(m => ({ default: m.GameView })));
@@ -26,6 +27,7 @@ function Routed() {
         <Route path="games" element={<Games />} />
         <Route path="games/new" element={isPlayer ? <AddGame /> : <Navigate to="/games" replace />} />
         <Route path="games/:id" element={later(<GameView />)} />
+        <Route path="stats" element={<Stats />} />
         <Route path="sessions" element={<LatestSession />} />
         <Route path="sessions/:date" element={<Session />} />
         <Route path="admin" element={isAdmin ? later(<Admin />) : <Navigate to="/" replace />} />
