@@ -14,7 +14,7 @@ export interface DetectorResult {
   userAgent: string;
 }
 
-export const DETECTOR_VERSION = 'rally-lab-2026-10-08';
+export const DETECTOR_VERSION = 'rally-lab-2026-11-01';
 
 export function runDetector(
   file: File,

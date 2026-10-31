@@ -5,6 +5,7 @@ const PARAMS = {
   pad_start: 1.0, pad_end: 1.0, min_xrange: 40,
   serve_peak: 9.0, hit_rate: 1.5, min_prob: 0.4,
   split_gap: 1.6, loud: 12.0, min_loud: 2, end_pad: 1.5,
+  still_cell: 32, still_win: 60, still_frac: 0.2,
 };
 
 // cand rows: [t, x, y, area, moving, h, s, v, fill]; t = frameIndex / fps
@@ -19,7 +20,33 @@ function lineAt(p) {
     return n[k + 1] + (n[k + 2] - n[k + 1]) * x / 640;
   };
 }
-const above = (cand, p) => { const y = lineAt(p); return cand.filter(r => r[2] < y(r[0], r[1]) && r[5] >= p.min_hue); };
+// Yellow that doesn't move (a door, a light, a sign): within each still_win window, grid cells lit in at least
+// still_frac of its half-seconds. A ball in play never sits in one 32 px cell that long; in an indoor hall, doors,
+// lights and walls do, and would otherwise read as one endless rally.
+function stillCells(cand, p) {
+  const bad = new Set(), C = p.still_cell, W = p.still_win;
+  const key = r => Math.floor(r[0] / W) * 4096 + Math.floor(r[1] / C) + Math.floor(r[2] / C) * 64;
+  if (!p.still_frac || !cand.length) return { bad, key };
+  const lit = new Map();
+  let end = 0;
+  for (const r of cand) {
+    if (r[0] > end) end = r[0];
+    if (r[5] < p.min_hue) continue;
+    const k = key(r);
+    let s = lit.get(k);
+    if (!s) lit.set(k, s = new Set());
+    s.add(Math.floor(r[0] * 2));
+  }
+  for (const [k, s] of lit) {
+    const span = Math.min(W, end - Math.floor(k / 4096) * W) * 2;  // half-seconds in that window
+    if (s.size >= p.still_frac * Math.max(span, 1)) bad.add(k);
+  }
+  return { bad, key };
+}
+const above = (cand, p) => {
+  const y = lineAt(p), still = stillCells(cand, p);
+  return cand.filter(r => r[2] < y(r[0], r[1]) && r[5] >= p.min_hue && !still.bad.has(still.key(r)));
+};
 
 function highBall(cand, p) {
   return above(cand, p).map(r => [r[0], r[1]]);

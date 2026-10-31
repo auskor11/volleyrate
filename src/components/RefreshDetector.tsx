@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CAMERA_KINDS, packServes, type Angle } from '../lib/cameras';
 import { detectorSupported, runDetector, type DetectorProgress } from '../lib/detector';
-import { fmtTime, logHistory, updateGame, type Game } from '../lib/games';
+import { fmtTime, logHistory, saveRallies, updateGame, type Game } from '../lib/games';
 import { useAuth } from '../lib/auth';
 import { NetLine, lastNetLine, netParams, packNet, unpackNet } from './NetLine';
 
@@ -26,10 +26,13 @@ export function RefreshDetector({ game, cam, onClose }: { game: Game; cam: Angle
   const [file, setFile] = useState<File | null>(null);
   const [p, setP] = useState<DetectorProgress | null>(null);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<ReturnType<typeof score> & { examples: number } | null>(null);
+  const [done, setDone] = useState<ReturnType<typeof score> & { examples: number; replaced?: number } | null>(null);
   const [error, setError] = useState('');
   const [net, setNet] = useState(() => unpackNet(cam) ?? lastNetLine());  // back camera: the top of the net in the picture
   const [waitingNet, setWaitingNet] = useState(false);
+  // nobody has touched this game's rallies yet (e.g. the first run went wrong): it can find them again from scratch
+  const untouched = cam.id === 'main' && !game.reviewed && game.rallies.every(x => x.st === 'auto');
+  const [redo, setRedo] = useState(untouched);
   const cancel = useRef<() => void>(undefined);
   useEffect(() => () => cancel.current?.(), []);
 
@@ -42,12 +45,21 @@ export function RefreshDetector({ game, cam, onClose }: { game: Game; cam: Angle
     try {
       // measure serves in the reviewed rallies themselves (incl. ones added by hand), in this camera's time
       const live = game.rallies.filter(x => x.st !== 'bad').sort((a, b) => a.s - b.s);
+      const replace = untouched && redo;
       const job = runDetector(f, setP, undefined, false, cam.kind, cam.kind === 'back' ? netParams(net) : {},
-        live.map(x => [x.s + cam.offset, x.e + cam.offset] as [number, number]));
+        replace ? undefined : live.map(x => [x.s + cam.offset, x.e + cam.offset] as [number, number]));
       const netField = cam.kind === 'back' ? packNet(net) : {};
       cancel.current = job.cancel;
       const r = await job.result;
-      const serveField = cam.kind === 'back' && r.serves?.length ? { serves: packServes(live.map(x => x.s), r.serves) } : {};
+      const starts = replace ? r.rallies.map(x => x[0]) : live.map(x => x.s);
+      const serveField = cam.kind === 'back' && r.serves?.length ? { serves: packServes(starts, r.serves) } : {};
+      if (replace) {
+        await saveRallies(game.id, r.rallies.map(([s, e]) => ({ s, e, st: 'auto', as: s, ae: e })));
+        await updateGame(game.id, { segments: r.segments, peaks: r.peaks, ...netField, ...serveField });
+        logHistory(game.id, user, [`Found the rallies again with the "${cam.name}" camera's detector: ${r.rallies.length} rallies (replacing ${game.rallies.length})`]).catch(() => {});
+        setDone({ found: 0, total: 0, falses: 0, clips: r.rallies.length, examples: r.segments.length, replaced: game.rallies.length });
+        return;
+      }
       // this camera's clips on the game's timeline, scored against the reviewed rallies
       const clips = r.rallies.map(([a, b]) => [a - cam.offset, b - cam.offset] as [number, number]);
       const sc = score(clips, game.rallies.filter(x => x.st !== 'bad'));
@@ -83,6 +95,15 @@ export function RefreshDetector({ game, cam, onClose }: { game: Game; cam: Angle
               onChange={e => e.target.files?.[0] && run(e.target.files[0])} />
           </label>
         )}
+        {untouched && !busy && !done && (
+          <label className="flex items-start gap-2 rounded-lg bg-raised p-3 text-sm">
+            <input type="checkbox" className="mt-1" checked={redo} onChange={e => setRedo(e.target.checked)} />
+            <span>
+              <b>Find the rallies again</b>, replacing this game's {game.rallies.length} detected {game.rallies.length === 1 ? 'rally' : 'rallies'}.
+              {' '}Nobody has reviewed or changed them yet, so nothing is lost.
+            </span>
+          </label>
+        )}
         {file && waitingNet && (
           <div className="space-y-2">
             <NetLine file={file} value={net} onChange={setNet} />
@@ -95,7 +116,12 @@ export function RefreshDetector({ game, cam, onClose }: { game: Game; cam: Angle
             <p className="mt-1 text-xs text-muted">Finding rallies… {p ? `${fmtTime(p.videoTime)} / ${fmtTime(p.duration)}` : ''} Keep this screen open.</p>
           </div>
         )}
-        {done && (
+        {done?.replaced != null && (
+          <div className="rounded-lg bg-raised p-3 text-sm">
+            <p><span className="text-good">✓</span> Found <b>{done.clips} rallies</b> (was {done.replaced}). Review them as usual.</p>
+          </div>
+        )}
+        {done && done.replaced == null && (
           <div className="rounded-lg bg-raised p-3 text-sm">
             <p><span className="text-good">✓</span> Updated: <b>{done.examples}</b> training examples.</p>
             <p className="mt-1 text-muted">

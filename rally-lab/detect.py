@@ -38,6 +38,9 @@ PARAMS = dict(
     loud=12.0,       # onset strength (x median) that counts as a ball contact
     min_loud=2,      # contacts a flight needs to count as part of the rally
     end_pad=1.5,     # s after the last rally flight (replaces pad_end in the output)
+    still_cell=32,   # px: grid for "yellow that stays put" (a door, a light, a sign): never the ball in play
+    still_win=60,    # s: judged per window, so a bumped camera's background is re-learnt
+    still_frac=0.2,  # share of a window's half-seconds a cell must be lit to count as still
 )
 MODEL = Path(__file__).parent / "model.json"
 
@@ -58,10 +61,30 @@ def line_at(cand, p):
     return n[k, 1] + (n[k, 2] - n[k, 1]) * cand[:, 1] / 640
 
 
+def still(cand, p):
+    """Rows on yellow that doesn't move: within each still_win window, grid cells lit in at least still_frac
+    of its half-seconds. A ball in play never sits in one 32 px cell that long; indoors, doors, lights and
+    walls do, and would otherwise read as one endless rally."""
+    if not p.get("still_frac") or not len(cand):
+        return np.zeros(len(cand), bool)
+    C, W = p["still_cell"], p["still_win"]
+    t = cand[:, 0]
+    win = (t // W).astype(np.int64)
+    cell = (cand[:, 1] // C).astype(np.int64) + (cand[:, 2] // C).astype(np.int64) * 64
+    key = win * 4096 + cell
+    yellow = cand[:, 5] >= p["min_hue"]
+    k, b = key[yellow], (t[yellow] * 2).astype(np.int64)
+    uk, counts = np.unique(np.unique(np.c_[k, b], axis=0)[:, 0], return_counts=True)
+    end = t.max()
+    span = np.minimum(W, end - (uk // 4096) * W) * 2  # half-seconds in that window
+    bad = uk[counts >= p["still_frac"] * np.maximum(span, 1)]
+    return np.isin(key, bad) & yellow
+
+
 def high_ball(name, p=PARAMS):
     """Rows (t, x) of ball sightings above head height."""
     cand, n, fps = load(name)
-    m = (cand[:, 2] < line_at(cand, p)) & (cand[:, 5] >= p["min_hue"])
+    m = (cand[:, 2] < line_at(cand, p)) & (cand[:, 5] >= p["min_hue"]) & ~still(cand, p)
     return np.c_[(cand[m, 0] * fps).round() / fps, cand[m, 1]]
 
 
