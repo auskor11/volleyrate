@@ -3,7 +3,7 @@
 // rally detector (its clips become training data once the game is reviewed).
 import { useEffect, useRef, useState } from 'react';
 import { CameraFields, defaultCamera, type CameraChoice } from './CameraFields';
-import { NetLine, lastNetLine, netParams } from './NetLine';
+import { NetLine, lastNetLine, netParams, packNet } from './NetLine';
 import { autoSync, packServes, type Angle } from '../lib/cameras';
 import { detectorSupported, runDetector, type DetectorProgress } from '../lib/detector';
 import { fmtTime, logHistory, updateGame, type Game } from '../lib/games';
@@ -28,7 +28,7 @@ export function AddCamera({ game, onClose }: { game: Game; onClose: () => void }
   useEffect(() => () => cancel.current?.(), []);
   const needMain = !game.peaks?.length;
 
-  async function read(f: File, what: string, audioOnly: boolean, extra: Record<string, number> = {}) {
+  async function read(f: File, what: string, audioOnly: boolean, extra: Record<string, number | number[]> = {}) {
     setStep({ what, p: null });
     const run = runDetector(f, p => setStep({ what, p }), undefined, audioOnly, camera.kind, extra);
     cancel.current = run.cancel;
@@ -51,7 +51,7 @@ export function AddCamera({ game, onClose }: { game: Game; onClose: () => void }
       if (file) {
         mainPeaks = needMain && mainFile ? (await read(mainFile, "Reading the main video's sound", true)).peaks : game.peaks ?? [];
         const r = await read(file, detect ? "Finding rallies in this camera's video" : "Reading this camera's sound", !detect, needsNet ? netParams(net) : {});
-        if (needsNet) angle.net = Math.round(net * 1000) / 1000;
+        if (needsNet) Object.assign(angle, packNet(net));
         angle.peaks = r.peaks;
         if (detect) angle.segments = r.segments;
         const s = mainPeaks.length ? autoSync(mainPeaks, r.peaks) : null;

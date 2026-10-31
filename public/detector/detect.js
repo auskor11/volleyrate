@@ -8,8 +8,21 @@ const PARAMS = {
 };
 
 // cand rows: [t, x, y, area, moving, h, s, v, fill]; t = frameIndex / fps
+// The "above head height" line at (t, x). Normally the flat line y_max; a back camera's marked net top can
+// tilt and move mid-video (the camera got bumped): p.net = [from time, y at the left edge, y at the right, ...] in px.
+function lineAt(p) {
+  const n = p.net;
+  if (!n || !n.length) return () => p.y_max;
+  return (t, x) => {
+    let k = 0;
+    for (let i = 3; i < n.length && n[i] <= t; i += 3) k = i;
+    return n[k + 1] + (n[k + 2] - n[k + 1]) * x / 640;
+  };
+}
+const above = (cand, p) => { const y = lineAt(p); return cand.filter(r => r[2] < y(r[0], r[1]) && r[5] >= p.min_hue); };
+
 function highBall(cand, p) {
-  return cand.filter(r => r[2] < p.y_max && r[5] >= p.min_hue).map(r => [r[0], r[1]]);
+  return above(cand, p).map(r => [r[0], r[1]]);
 }
 
 const uniqSorted = a => Array.from(new Set(a)).sort((x, y) => x - y);
@@ -136,7 +149,8 @@ function detectRallies(cand, au, model, p = PARAMS) {
 // team's serves start big and high in the picture and the far team's small and near the net, so the
 // app can split a game's serves into the two ends. Tested on a reviewed game: 97% of serving teams right.
 function serveSignatures(cand, windows, p) {
-  const high = cand.filter(r => r[2] < p.y_max && r[5] >= p.min_hue).sort((x, y) => x[0] - y[0]);
+  const high = above(cand, p).sort((x, y) => x[0] - y[0]);
+  const y = lineAt(p);
   const ht = high.map(r => r[0]);
   const median = a => { const s = a.slice().sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN; };
   return windows.map(([a, b]) => {
@@ -148,7 +162,7 @@ function serveSignatures(cand, windows, p) {
     }
     if (!first.length) return null;
     const r3 = x => Math.round(x * 1000) / 1000;
-    return [r3(Math.log(median(first.map(r => r[3])) + 1)), r3(median(first.map(r => r[2])) / p.y_max)];
+    return [r3(Math.log(median(first.map(r => r[3])) + 1)), r3(median(first.map(r => r[2] / y(r[0], r[1]))))];
   });
 }
 

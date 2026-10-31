@@ -22,7 +22,7 @@ export function runDetector(
   onInfo?: (info: { duration?: number; codec?: string }) => void,
   audioOnly = false,
   kind: CameraKind = 'side',
-  extra: Record<string, number> = {},  // per-video settings, e.g. the back camera's net line
+  extra: Record<string, number | number[]> = {},  // per-video settings, e.g. the back camera's net line
   serveWindows?: [number, number][],   // rallies to measure serves in (video time); default: the detected ones
 ): { result: Promise<DetectorResult>; cancel: () => void } {
   const worker = new Worker('/detector/worker.js');

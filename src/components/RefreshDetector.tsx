@@ -6,7 +6,7 @@ import { CAMERA_KINDS, packServes, type Angle } from '../lib/cameras';
 import { detectorSupported, runDetector, type DetectorProgress } from '../lib/detector';
 import { fmtTime, logHistory, updateGame, type Game } from '../lib/games';
 import { useAuth } from '../lib/auth';
-import { NetLine, lastNetLine, netParams } from './NetLine';
+import { NetLine, lastNetLine, netParams, packNet, unpackNet } from './NetLine';
 
 /** Reviewed rallies found by the detector's clips (each clip counts for one rally) and clips matching none. */
 function score(clips: [number, number][], truth: { s: number; e: number }[]) {
@@ -28,7 +28,7 @@ export function RefreshDetector({ game, cam, onClose }: { game: Game; cam: Angle
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<ReturnType<typeof score> & { examples: number } | null>(null);
   const [error, setError] = useState('');
-  const [net, setNet] = useState(cam.net ?? lastNetLine());  // back camera: the top of the net in the picture
+  const [net, setNet] = useState(() => unpackNet(cam) ?? lastNetLine());  // back camera: the top of the net in the picture
   const [waitingNet, setWaitingNet] = useState(false);
   const cancel = useRef<() => void>(undefined);
   useEffect(() => () => cancel.current?.(), []);
@@ -44,7 +44,7 @@ export function RefreshDetector({ game, cam, onClose }: { game: Game; cam: Angle
       const live = game.rallies.filter(x => x.st !== 'bad').sort((a, b) => a.s - b.s);
       const job = runDetector(f, setP, undefined, false, cam.kind, cam.kind === 'back' ? netParams(net) : {},
         live.map(x => [x.s + cam.offset, x.e + cam.offset] as [number, number]));
-      const netField = cam.kind === 'back' ? { net: Math.round(net * 1000) / 1000 } : {};
+      const netField = cam.kind === 'back' ? packNet(net) : {};
       cancel.current = job.cancel;
       const r = await job.result;
       const serveField = cam.kind === 'back' && r.serves?.length ? { serves: packServes(live.map(x => x.s), r.serves) } : {};

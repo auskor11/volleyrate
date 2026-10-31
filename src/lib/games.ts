@@ -179,6 +179,7 @@ export interface Game {
   cameraName?: string;
   behind?: Team;
   net?: number;           // back camera: the top of the net in the picture (fraction of height)
+  netMarks?: number[];    // back camera: the net's top as [from time, left, right, ...] when tilted or moved (NetLine)
   serves?: number[];      // back camera: serve signatures per rally (see cameras.ts serveGuesses)
   angles?: Angle[];
 }
@@ -279,7 +280,7 @@ export async function saveRallies(id: string, rallies: Rally[]) {
   await updateDoc(doc(db, 'games', id), { rallies: sorted, updatedAt: serverTimestamp() });
 }
 
-export async function updateGame(id: string, patch: Partial<Pick<Game, 'title' | 'date' | 'reviewed' | 'peaks' | 'segments' | 'court' | 'angles' | 'camera' | 'cameraName' | 'behind' | 'net' | 'serves'>>) {
+export async function updateGame(id: string, patch: Partial<Pick<Game, 'title' | 'date' | 'reviewed' | 'peaks' | 'segments' | 'court' | 'angles' | 'camera' | 'cameraName' | 'behind' | 'net' | 'netMarks' | 'serves'>>) {
   const { light, heavy } = split(patch);
   if (heavy) await setDoc(doc(db, 'gameData', id), heavy, { merge: true });
   if (Object.keys(light).length) await updateDoc(doc(db, 'games', id), light);

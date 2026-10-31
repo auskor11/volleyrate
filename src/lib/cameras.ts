@@ -32,6 +32,7 @@ export interface Angle {
   peaks?: number[];        // contact sounds, used to line it up
   sync?: { matched: number; total: number };  // how well the auto-sync matched contact sounds
   net?: number;            // back camera: where the top of the net is (fraction of the picture's height)
+  netMarks?: number[];     // back camera: the net's top as [from time, left, right, ...] when tilted or moved (NetLine)
   serves?: number[];       // serve signatures [rally start (game time), ball size, height, ...] (see serveGuesses)
 }
 
@@ -39,7 +40,7 @@ export interface Angle {
 export function cameras(g: Game): Angle[] {
   const main: Angle = {
     id: 'main', name: g.cameraName ?? CAMERA_KINDS[g.camera ?? 'side'].label, kind: g.camera ?? 'side',
-    ...(g.behind ? { behind: g.behind } : {}), ...(g.net ? { net: g.net } : {}), ...(g.serves ? { serves: g.serves } : {}),
+    ...(g.behind ? { behind: g.behind } : {}), ...(g.net ? { net: g.net } : {}), ...(g.netMarks ? { netMarks: g.netMarks } : {}), ...(g.serves ? { serves: g.serves } : {}),
     youtubeId: g.youtubeId, offset: 0, segments: g.segments, peaks: g.peaks,
   };
   return [main, ...(g.angles ?? [])];

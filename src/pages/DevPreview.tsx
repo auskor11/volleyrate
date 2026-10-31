@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NetLine, netParams } from '../components/NetLine';
+import { NetLine, netParams, type NetMark } from '../components/NetLine';
 // Development-only: renders cards and a detail view with sample data (no sign-in needed).
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Layout } from '../components/Layout';
@@ -88,9 +88,9 @@ export function DevHighlights() {
 // Net-line marking step on a short sample clip (dev only; the sample file is not committed).
 export function DevNetLine() {
   const [file, setFile] = useState<File | null>(null);
-  const [v, setV] = useState(0.55);
+  const [v, setV] = useState<NetMark[]>([{ t: 0, l: 0.55, r: 0.55 }]);
   useEffect(() => { fetch('/__netline_sample.mp4').then(r => r.blob()).then(b => setFile(new File([b], 'sample.mp4', { type: 'video/mp4' }))); }, []);
-  return <div className="mx-auto max-w-lg p-4">{file && <NetLine file={file} value={v} onChange={setV} />}<p className="mt-2 text-sm">value {v.toFixed(3)} → y_max {netParams(v).y_max}</p></div>;
+  return <div className="mx-auto max-w-lg p-4">{file && <NetLine file={file} value={v} onChange={setV} />}<p className="mt-2 text-sm">{JSON.stringify(netParams(v))}</p></div>;
 }
 
 // The app shell (header, nav, account menu with the look switch) around the sample cards.

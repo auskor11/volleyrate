@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { DETECTOR_VERSION, detectorSupported, runDetector, type DetectorProgress, type DetectorResult } from '../lib/detector';
 import { CameraFields, defaultCamera, type CameraChoice } from '../components/CameraFields';
-import { NetLine, lastNetLine, netParams } from '../components/NetLine';
+import { NetLine, lastNetLine, netParams, packNet } from '../components/NetLine';
 import { packServes } from '../lib/cameras';
 import { createGame, fmtTime, liveRallies, logHistory, useGames, type Game } from '../lib/games';
 import { createPlayer, parseYouTubeId, thumbnail, type YTPlayer } from '../lib/youtube';
@@ -185,7 +185,7 @@ export function AddGame() {
         ...(camera.kind !== 'side' ? { camera: camera.kind } : {}),
         ...(camera.name.trim() && camera.name.trim() !== 'Side' ? { cameraName: camera.name.trim() } : {}),
         ...(camera.kind === 'back' && camera.behind ? { behind: camera.behind } : {}),
-        ...(camera.kind === 'back' ? { net: Math.round(net * 1000) / 1000 } : {}),
+        ...(camera.kind === 'back' ? packNet(net) : {}),
         // which end each rally's serve came from (back cameras): pre-picks the server in Review
         ...(camera.kind === 'back' && result!.serves?.length ? { serves: packServes(result!.rallies.map(r => r[0]), result!.serves) } : {}),
       });

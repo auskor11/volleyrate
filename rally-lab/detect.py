@@ -47,10 +47,21 @@ def load(name):
     return d["cand"], int(d["nframes"]), float(d["fps"])
 
 
+def line_at(cand, p):
+    """The "above head height" line for each row: y_max, or a back camera's marked net top, which can tilt and
+    move mid-video: p["net"] = [from time, y at the left edge, y at the right, ...] in px (as in detect.js)."""
+    n = p.get("net")
+    if not n:
+        return np.full(len(cand), p["y_max"])
+    n = np.asarray(n, float).reshape(-1, 3)
+    k = np.searchsorted(n[1:, 0], cand[:, 0], side="right")
+    return n[k, 1] + (n[k, 2] - n[k, 1]) * cand[:, 1] / 640
+
+
 def high_ball(name, p=PARAMS):
     """Rows (t, x) of ball sightings above head height."""
     cand, n, fps = load(name)
-    m = (cand[:, 2] < p["y_max"]) & (cand[:, 5] >= p["min_hue"])
+    m = (cand[:, 2] < line_at(cand, p)) & (cand[:, 5] >= p["min_hue"])
     return np.c_[(cand[m, 0] * fps).round() / fps, cand[m, 1]]
 
 
