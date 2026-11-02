@@ -245,6 +245,18 @@ export function makeServer(c: CourtState, p: string): CourtState {
 }
 
 /**
+ * A court set by hand at a rally (e.g. the teams were changed there), with team w serving it. prev = the team
+ * that served the rally before. Unchanged if w already serves; else a side-out to w (w rotates, as after a
+ * rally), or, if the hand-set court already had the other team siding out, that rotation taken back.
+ */
+export function withServing(c: CourtState, w: Team, prev: Team): CourtState {
+  const s = c.serving;
+  if (s === w) return c;
+  if (s === prev) return { ...c, [w]: liberoRule(backCourtSwap(rotate(c[w]), true), true), [s]: liberoRule(backCourtSwap(c[s]), false), serving: w };
+  return placeSpecialists({ ...c, [s]: rotateBack(c[s]), serving: w });
+}
+
+/**
  * After a hand-made rotation or a change of serving team: the libero and middles (and a six-player team's
  * back-court player) go where the rules put them, the same as after an automatic rotation.
  */
