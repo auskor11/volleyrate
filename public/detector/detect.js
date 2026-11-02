@@ -20,6 +20,16 @@ function lineAt(p) {
     return n[k + 1] + (n[k + 2] - n[k + 1]) * x / 640;
   };
 }
+// Indoor courts: a "top line" under the ceiling lights, one height (px) per p.net mark; nothing above it counts.
+function topAt(p) {
+  const n = p.net || [0], u = p.top;
+  if (!u || !u.length) return () => -1;
+  return t => {
+    let k = 0;
+    for (let i = 3; i < n.length && n[i] <= t; i += 3) k = i;
+    return u[Math.min(k / 3, u.length - 1)];
+  };
+}
 // Yellow that doesn't move (a door, a light, a sign): within each still_win window, grid cells lit in at least
 // still_frac of its half-seconds. A ball in play never sits in one 32 px cell that long; in an indoor hall, doors,
 // lights and walls do, and would otherwise read as one endless rally.
@@ -44,8 +54,8 @@ function stillCells(cand, p) {
   return { bad, key };
 }
 const above = (cand, p) => {
-  const y = lineAt(p), still = stillCells(cand, p);
-  return cand.filter(r => r[2] < y(r[0], r[1]) && r[5] >= p.min_hue && !still.bad.has(still.key(r)));
+  const y = lineAt(p), top = topAt(p), still = stillCells(cand, p);
+  return cand.filter(r => r[2] < y(r[0], r[1]) && r[2] >= top(r[0]) && r[5] >= p.min_hue && !still.bad.has(still.key(r)));
 };
 
 function highBall(cand, p) {
@@ -161,7 +171,8 @@ function detectRallies(cand, au, model, p = PARAMS) {
   const out = [], segments = [];
   const r1 = x => Math.round(x * 10) / 10, r3 = x => Math.round(x * 1000) / 1000;
   segs.forEach((r, i) => {
-    if (!audioOk(r, au, p)) return;  // the classifier never sees these
+    // the classifier never sees these; indoors (sound_check 0) echo blurs contact sounds, so the sound check is skipped
+    if (p.sound_check !== 0 && !audioOk(r, au, p)) return;
     const f = features(segs, i, hb, au);
     const pr = model ? prob(f, model) : 1;
     segments.push({ a: r1(r[0]), b: r1(r[1]), f: f.map(r3), p: r3(pr) });

@@ -61,6 +61,17 @@ def line_at(cand, p):
     return n[k, 1] + (n[k, 2] - n[k, 1]) * cand[:, 1] / 640
 
 
+def top_at(cand, p):
+    """Indoor courts: a "top line" under the ceiling lights, one height (px) per p["net"] mark; nothing above
+    it counts (as in detect.js)."""
+    u = p.get("top")
+    if not u:
+        return np.full(len(cand), -1.0)
+    n = np.asarray(p.get("net") or [0, 0, 0], float).reshape(-1, 3)
+    k = np.searchsorted(n[1:, 0], cand[:, 0], side="right")
+    return np.asarray(u, float)[np.minimum(k, len(u) - 1)]
+
+
 def still(cand, p):
     """Rows on yellow that doesn't move: within each still_win window, grid cells lit in at least still_frac
     of its half-seconds. A ball in play never sits in one 32 px cell that long; indoors, doors, lights and
@@ -84,7 +95,7 @@ def still(cand, p):
 def high_ball(name, p=PARAMS):
     """Rows (t, x) of ball sightings above head height."""
     cand, n, fps = load(name)
-    m = (cand[:, 2] < line_at(cand, p)) & (cand[:, 5] >= p["min_hue"]) & ~still(cand, p)
+    m = (cand[:, 2] < line_at(cand, p)) & (cand[:, 2] >= top_at(cand, p)) & (cand[:, 5] >= p["min_hue"]) & ~still(cand, p)
     return np.c_[(cand[m, 0] * fps).round() / fps, cand[m, 1]]
 
 
@@ -171,7 +182,8 @@ def detect(name, p=PARAMS):
     model = json.load(open(MODEL)) if MODEL.exists() else None
     out = []
     for i, r in enumerate(segs):
-        if not audio_ok(r, tf, flux, p):
+        # indoors (sound_check 0) echo blurs contact sounds, so the sound check is skipped
+        if p.get("sound_check", 1) and not audio_ok(r, tf, flux, p):
             continue
         if model and prob(features(segs, i, hb, tf, flux), model) < p["min_prob"]:
             continue

@@ -48,7 +48,8 @@ export function RefreshDetector({ game, cam, onClose }: { game: Game; cam: Angle
       const replace = untouched && redo;
       const job = runDetector(f, setP, undefined, false, cam.kind, cam.kind === 'back' ? netParams(net) : {},
         replace ? undefined : live.map(x => [x.s + cam.offset, x.e + cam.offset] as [number, number]));
-      const netField = cam.kind === 'back' ? packNet(net) : {};
+      // switched back to outdoor: clear the old indoor top line
+      const netField = cam.kind === 'back' ? { ...(cam.netTops?.length ? { netTops: [] } : {}), ...packNet(net) } : {};
       cancel.current = job.cancel;
       const r = await job.result;
       const starts = replace ? r.rallies.map(x => x[0]) : live.map(x => x.s);
