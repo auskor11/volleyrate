@@ -3,7 +3,7 @@
 // penalised), keep a clip when probability >= 0.4.
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Game } from './games';
+import { gameEnd, type Game } from './games';
 import { cameras, type CameraKind } from './cameras';
 
 export interface Model { mean: number[]; scale: number[]; coef: number[]; intercept: number }
@@ -51,10 +51,12 @@ export function rowsFromGames(games: Game[], kind: CameraKind = 'side'): Row[] {
   for (const g of games) {
     if (!g.reviewed) continue;
     const real = g.rallies.filter(r => r.st !== 'bad');
+    const end = gameEnd(g) ?? Infinity;  // play after the game (warm-downs, fun rallies) is neither real nor false
     for (const cam of cameras(g)) {
       if (cam.kind !== kind || !cam.segments?.length) continue;
       for (const s of cam.segments) {
         const a = s.a - cam.offset, b = s.b - cam.offset;  // camera time → game time
+        if (a >= end) continue;
         const hit = real.some(r => Math.min(r.e, b) - Math.max(r.s, a) > 0);
         rows.push({ f: s.f, y: hit ? 1 : 0 });
       }

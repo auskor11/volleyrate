@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CAMERA_KINDS, packServes, type Angle } from '../lib/cameras';
 import { detectorSupported, runDetector, type DetectorProgress } from '../lib/detector';
-import { fmtTime, logHistory, saveRallies, updateGame, type Game } from '../lib/games';
+import { fmtTime, gameEnd, logHistory, saveRallies, updateGame, type Game } from '../lib/games';
 import { useAuth } from '../lib/auth';
 import { NetLine, lastNetLine, netParams, packNet, unpackNet } from './NetLine';
 
@@ -62,7 +62,8 @@ export function RefreshDetector({ game, cam, onClose }: { game: Game; cam: Angle
         return;
       }
       // this camera's clips on the game's timeline, scored against the reviewed rallies
-      const clips = r.rallies.map(([a, b]) => [a - cam.offset, b - cam.offset] as [number, number]);
+      const end = gameEnd(game) ?? Infinity;  // clips after the game ended don't count either way
+      const clips = r.rallies.map(([a, b]) => [a - cam.offset, b - cam.offset] as [number, number]).filter(([a]) => a < end);
       const sc = score(clips, game.rallies.filter(x => x.st !== 'bad'));
       if (cam.id === 'main') await updateGame(game.id, { segments: r.segments, peaks: r.peaks, ...netField, ...serveField });
       else await updateGame(game.id, { angles: (game.angles ?? []).map(a => a.id === cam.id ? { ...a, segments: r.segments, peaks: r.peaks, ...netField, ...serveField } : a) });

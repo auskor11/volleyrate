@@ -637,7 +637,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
       note ? [`rev:${rally.as ?? rally.s}:${note.split(':')[0]}`, `${label(rally)}: ${note}`] : undefined);
   };
   const mark = (st: 'ok' | 'bad') => {
-    if (!rally) return;
+    if (!rally || rally.after) return;  // after the game: undo the game end instead
     if (st === 'bad' && rally.st === 'added') {  // remove a rally someone added by mistake
       commit(rallies.filter(r => r !== rally), undefined, [`del:${rally.s}`, `Removed the added rally at ${fmtTime(rally.s)}`]);
       return;
@@ -645,6 +645,17 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
     const nst = rally.st === 'added' ? 'added' : rally.st === st ? 'auto' : st;
     edit({ st: nst }, `marked ${nst === 'ok' ? 'good' : nst === 'bad' ? 'not a rally' : nst === 'auto' ? 'unchecked' : 'added'}`);
     if (rally.st !== st && cur < list.length - 1) setTimeout(() => go(cur + 1), 150);
+  };
+  // the video ran on after the game: this rally and every later one are left out (not rallies, and not used to train the detector)
+  const endHere = () => {
+    if (!rally) return;
+    const t = rally.s;
+    commit(rallies.map(r => r.s >= t && !r.after ? { ...r, st: 'bad', after: r.st } : r), t,
+      ['end', `Game ended before ${label(rally)}: ${rallies.filter(r => r.s >= t).length} clips after it left out`]);
+  };
+  const undoEnd = () => {
+    commit(rallies.map(r => { if (!r.after) return r; const { after, ...rest } = r; return { ...rest, st: after }; }), rally?.s,
+      ['end', 'Undid the game end: the clips after it are back']);
   };
   // Review: confirm who served (the court's prediction, or the reviewer's pick) as the rally's first touch
   const [pickServer, setPickServer] = useState(false);
@@ -679,7 +690,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
       })()
     : null;
   const good = (p = reviewServer, court?: CourtState, won?: Team) => {
-    if (!rally) return;
+    if (!rally || rally.after) return;
     if (!p || !view) { mark('ok'); return; }  // no teams set up: plain review
     const r0 = rally;
     const ts = r0.touches ?? [];
@@ -998,7 +1009,12 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
                 </button>
               )
             )}
-            {serveOptions && rally?.st !== 'bad' ? (
+            {rally?.after ? (
+              <div className="flex items-center gap-2 rounded-lg bg-raised px-3 py-2 text-sm">
+                <span className="flex-1">⏹ <b>After the game</b> <span className="text-muted">· not a rally, and not used to train the detector</span></span>
+                <button className="shrink-0 rounded-md border border-line px-2 py-1 text-xs" onClick={undoEnd}>Undo game end</button>
+              </div>
+            ) : serveOptions && rally?.st !== 'bad' ? (
               <div className="grid grid-cols-[auto_1fr_1fr] gap-2">
                 <button className={`${btn} text-bad`} onClick={() => mark('bad')}>✗ Not a rally</button>
                 {serveOptions.map((o, i) => {
@@ -1037,6 +1053,12 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
               <button className={btn} disabled={!rally} onClick={setEnd} title="Set end to now">⇥ End</button>
               <button className={btn} disabled={cur >= list.length - 1} onClick={() => go(cur + 1)}>▶</button>
             </div>
+            {rally && !rally.after && cur > 0 && (
+              <button className="w-full rounded-lg border border-dashed border-line px-2 py-1.5 text-xs text-muted"
+                onClick={() => { if (confirm(`The game ended before this rally? This rally and the ${list.filter(r => r.s > rally.s).length} after it become "not a rally" and won't train the detector (you can undo).`)) endHere(); }}>
+                ⏹ Game ended before this rally (the rest is warm-down / fun play)
+              </button>
+            )}
             <p className="hidden text-xs text-muted lg:block">
               Pause at the right moment and tap Start ⇤ / ⇥ End to fix a clip; + Add creates a missed rally at the current time.
               Keys: Y good · X not a rally · [ start · ] end · A add · ←/→ rally · , / . ∓5s.

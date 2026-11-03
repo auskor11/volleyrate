@@ -19,6 +19,13 @@ export interface Rally {
   by?: string;             // who last edited this rally (first name)
   court?: CourtState;      // where everyone stood, as checked when the rally was tagged or edited
   won?: Team;              // who won, as told in review (used until the rally's tags say)
+  after?: Rally['st'];      // after the game ended (so marked not a rally): the status it had before
+}
+
+/** When the game ended, if a reviewer marked it: the first rally after the game. Nothing from here on trains the detector. */
+export function gameEnd(g: Pick<Game, 'rallies'>): number | undefined {
+  const t = g.rallies.filter(r => r.after).map(r => r.s);
+  return t.length ? Math.min(...t) : undefined;
 }
 
 // Edit history: games/{id}/history, append-only.
