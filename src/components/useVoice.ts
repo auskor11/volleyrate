@@ -29,11 +29,18 @@ export function useVoice(onPhrase: (text: string, times: number[]) => void, coun
     const Impl = on ? recImpl() : undefined;
     if (!Impl) return;
     let stopped = false, rec: Rec | null = null;
+    let lang = navigator.language || 'en-US';
+    let continuous = true;
+    let quick = 0, lastError = '';  // sessions that ended at once with nothing heard: something's wrong, don't loop
     const stamps: number[] = [];
+    const fail = (msg: string) => { stopped = true; setOn(false); setError(msg); rec?.abort(); };
     const start = () => {
+      const began = Date.now();
+      let got = false;
       rec = new Impl();
-      rec.continuous = true; rec.interimResults = true; rec.lang = navigator.language || 'en-US';
+      rec.continuous = continuous; rec.interimResults = true; rec.lang = lang;
       rec.onresult = e => {
+        got = true; quick = 0;
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const res = e.results[i], text = res[0].transcript;
           const n = cb.current.count(text);
@@ -43,12 +50,23 @@ export function useVoice(onPhrase: (text: string, times: number[]) => void, coun
         }
       };
       rec.onerror = e => {
-        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-          stopped = true; setOn(false);
-          setError('The microphone is blocked: allow it for this site in the browser settings (on iPhone, Siri must be on too).');
-        }
+        lastError = e.error;
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed')
+          fail('The microphone is blocked: allow it for this site in the browser settings (on a Mac also System Settings → Privacy → Microphone; on iPhone, Siri must be on too).');
+        else if (e.error === 'audio-capture') fail('No microphone found. Plug one in or check the input in System Settings → Sound.');
+        else if (e.error === 'language-not-supported' && lang !== 'en-US') lang = 'en-US';  // e.g. en-SG: retry in US English
+        else if (e.error === 'network') fail("This browser can't reach its speech service. Use Chrome or Safari (Brave, Arc and some others don't include it), and check the internet connection.");
       };
-      rec.onend = () => { if (!stopped) setTimeout(() => { if (!stopped) start(); }, 250); };
+      rec.onend = () => {
+        if (stopped) return;
+        stamps.length = 0;
+        if (!got && Date.now() - began < 1500) {
+          quick++;
+          if (quick === 2) continuous = false;  // Safari can be fussy about continuous listening: one phrase at a time instead
+          if (quick >= 4) { fail(`Speech recognition keeps stopping straight away${lastError ? ` (${lastError})` : ''}. Try Chrome or Safari, or send the admin what this says.`); return; }
+        }
+        setTimeout(() => { if (!stopped) start(); }, quick ? 600 : 150);
+      };
       try { rec.start(); } catch { /* already started */ }
     };
     setError(''); setHeard('');

@@ -285,7 +285,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
         <div className="min-w-0 flex-1 truncate text-center text-sm">{status}</div>
         <button className={`${btn} px-3 py-1.5`} disabled={!hasNext} onClick={onNext}>▶</button>
         {voiceSupported() && (
-          <button className={`${btn} px-2.5 py-1.5 ${voice.on ? 'border-bad bg-bad/15 text-bad' : ''}`} onClick={voice.toggle}
+          <button className={`${btn} px-2.5 py-1.5 ${voice.on ? 'border-bad bg-bad/15 text-bad' : ''}`} onClick={() => { if (!voice.on && !rally) onDone(); voice.toggle(); }}
             title="Voice tagging: say the touches as they happen">{voice.on ? '● Stop' : '🎤 Voice'}</button>
         )}
         <button className={`${btn} hidden px-2.5 py-1.5 lg:block`} onClick={() => setSheet(true)} title="Keyboard shortcuts (?)">⌨ ?</button>
