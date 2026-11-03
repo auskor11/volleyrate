@@ -11,6 +11,7 @@ export interface Player {
   ratings: Ratings;
   photo?: string;         // face photo: a small square image as a data URL (anyone on the team can change it)
   photoBy?: string;       // first name of whoever set it
+  voice?: string[];       // extra names voice tagging accepts (an English name, how speech hears an unusual one)
 }
 
 export interface Member {
@@ -53,6 +54,11 @@ export async function savePositions(playerId: string, positions: Position[]) {
 /** Set or remove (null) a player's face photo. Anyone on the team can change anyone's. */
 export async function savePhoto(playerId: string, photo: string | null, by: string) {
   await updateDoc(doc(db, 'players', playerId), photo ? { photo, photoBy: by } : { photo: deleteField(), photoBy: deleteField() });
+}
+
+/** Extra names voice tagging accepts for a player (admins). */
+export async function saveVoiceNames(playerId: string, names: string[]) {
+  await updateDoc(doc(db, 'players', playerId), names.length ? { voice: names } : { voice: deleteField() });
 }
 
 export async function savePlayer(p: Omit<Player, 'ratings'>) {

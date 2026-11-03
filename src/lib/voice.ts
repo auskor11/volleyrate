@@ -39,9 +39,9 @@ function near(a: string, b: string) {
   return prev[b.length] <= max;
 }
 
-export interface VoicePlayer { id: string; name: string; number: number | null }
+export interface VoicePlayer { id: string; name: string; number: number | null; voice?: string[] }
 
-/** Who a word means: a first name (or close to it, for speech slips), a full name, or a shirt number. */
+/** Who a word means: a name or voice name (in full, run together, or just the first word, or close to it for speech slips), or a shirt number. */
 function playerAt(words: string[], i: number, players: VoicePlayer[]): [string, number] | null {
   const w = words[i];
   // speech often hears "Guest B" as "guessed be", "guest v", "guestbee"…
@@ -53,14 +53,18 @@ function playerAt(words: string[], i: number, players: VoicePlayer[]): [string, 
     if (t && GUEST_B.has(t)) return ['guest-b', 2];
     return null;
   }
-  for (const pl of players) {
-    const parts = pl.name.toLowerCase().split(/\s+/);
-    if (parts.length > 1 && parts.every((x, k) => words[i + k] === x)) return [pl.id, parts.length];
+  const said = (pl: VoicePlayer) => [pl.name, ...(pl.voice ?? [])].map(n => n.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean)).filter(x => x.length);
+  // the longest match wins: a full name ("yi jie") or one run together ("yijie")
+  let best: [string, number] | null = null;
+  for (const pl of players) for (const parts of said(pl)) {
+    if (parts.length > 1 && parts.every((x, k) => words[i + k] === x) && parts.length > (best?.[1] ?? 0)) best = [pl.id, parts.length];
+    else if (!best && parts.join('') === w) best = [pl.id, 1];
   }
-  const exact = players.filter(pl => pl.name.toLowerCase().split(/\s+/)[0] === w);
+  if (best) return best;
+  const exact = players.filter(pl => said(pl).some(parts => parts[0] === w));
   if (exact.length === 1) return [exact[0].id, 1];
-  if (!exact.length && !(w in SKILL_WORDS) && !(w in POINT_WORDS) && !ERROR_WORDS.has(w) && !(w in GRADE_WORDS)) {
-    const close = players.filter(pl => near(w, pl.name.toLowerCase().split(/\s+/)[0]));
+  if (!exact.length && !(w in SKILL_WORDS) && !(w in POINT_WORDS) && !ERROR_WORDS.has(w) && !(w in GRADE_WORDS) && !GUEST_A.has(w) && !GUEST_B.has(w)) {
+    const close = players.filter(pl => said(pl).some(parts => near(w, parts.join('')) || near(w, parts[0])));
     if (close.length === 1) return [close[0].id, 1];
   }
   if (/^\d+$/.test(w)) {

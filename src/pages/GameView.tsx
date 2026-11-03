@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
-import { usePlayers, type Player } from '../lib/data';
+import { saveVoiceNames, usePlayers, type Player } from '../lib/data';
 import {
   ATTACK_TYPES, DEFAULT_SET_GRADE, GRADED, GRADE_LABELS, SKILLS, guestName, guestTeam, isGuest, deleteGame, fmtTime, isTagged, nextSkill, rallyResult, saveRallies, suggestTouches,
   updateGame, useGame, type AttackType, type Game, type SameTeam, type Grade, type Rally, type RallyEnd, type Skill, type Touch,
@@ -139,6 +139,43 @@ function ShortcutSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Extra names voice tagging accepts per player: an English name, or how speech hears an unusual one ("EJ"). */
+function VoiceNames({ players, onClose }: { players: Player[]; onClose: () => void }) {
+  const [draft, setDraft] = useState<Record<string, string>>(() => Object.fromEntries(players.map(p => [p.id, (p.voice ?? []).join(', ')])));
+  const [state, setState] = useState<'' | 'saving' | 'saved' | 'error'>('');
+  const split = (s: string) => [...new Set(s.split(',').map(x => x.trim()).filter(Boolean))];
+  const save = async () => {
+    setState('saving');
+    try {
+      await Promise.all(players.filter(p => split(draft[p.id] ?? '').join(',') !== (p.voice ?? []).join(','))
+        .map(p => saveVoiceNames(p.id, split(draft[p.id] ?? ''))));
+      setState('saved');
+    } catch { setState('error'); }
+  };
+  return (
+    <div className="space-y-2 rounded-lg border border-line bg-raised p-3 text-sm">
+      <p className="text-xs text-muted">
+        Other names voice tagging should accept, separated by commas: an English name, or what the "Heard:" line shows
+        when you say someone (e.g. <i>EJ, Ethan</i> for Yi Jie). Full names and names run together already work.
+      </p>
+      <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+        {players.map(p => (
+          <label key={p.id} className="flex items-center gap-2">
+            <span className="w-24 shrink-0 truncate font-semibold">{p.name}</span>
+            <input value={draft[p.id] ?? ''} onChange={e => { setDraft({ ...draft, [p.id]: e.target.value }); setState(''); }}
+              placeholder="e.g. another name" className="min-w-0 flex-1 rounded-md border border-line bg-surface px-2 py-1" />
+          </label>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <button className="rounded-lg bg-ball px-3 py-1.5 font-semibold text-bg disabled:opacity-50" disabled={state === 'saving'} onClick={save}>Save</button>
+        <button className="rounded-lg border border-line px-3 py-1.5" onClick={onClose}>Close</button>
+        <span className={`text-xs ${state === 'error' ? 'text-bad' : 'text-muted'}`}>{state === 'saving' ? 'Saving…' : state === 'saved' ? '✓ Saved' : state === 'error' ? "Couldn't save" : ''}</span>
+      </div>
+    </div>
+  );
+}
+
 function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange, onDone, onPrev, onNext, hasPrev, hasNext, sug, onSkip, serve, onServer, wonBy, needTeams, onTeams, sameTeam }: {
   rally: Rally | undefined; players: Player[]; name: (id?: string) => string; now: () => number;
   playing: () => boolean; togglePlay: () => void;
@@ -221,6 +258,8 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
     onChange(saved.map((x, j) => (j === i ? f(x) : x)), rally.end);
   }
 
+  const canName = !!useAuth()?.isAdmin;
+  const [naming, setNaming] = useState(false);
   // voice tagging: "Alex serve, Ben pass, Chris set, Dana kill" (a phrase can cover part of a rally or all of it)
   const vc = useRef({ rally, saved, pre, blocked, onChange, onDone });
   vc.current = { rally, saved, pre, blocked, onChange, onDone };
@@ -298,8 +337,14 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
             {' '}End with kill / ace / point or out / net / error. Also: tip, perfect / okay / poor, guest A / guest B (or guest one / guest two), undo.
           </div>
           {voice.heard && <div className="mt-1 truncate">Heard: <i>{voice.heard}</i></div>}
+          {canName && (
+            <button className="mt-1 text-ball underline-offset-2 hover:underline" onClick={() => setNaming(!naming)}>
+              {naming ? 'Close voice names' : 'A name not caught? Set voice names →'}
+            </button>
+          )}
         </div>
       )}
+      {naming && <VoiceNames players={sorted} onClose={() => setNaming(false)} />}
       {rally && (
         <>
           {sug && (

@@ -50,7 +50,10 @@ export function DevPreview() {
 export function DevGame() {
   // real Game 2-3 rally times + contact sounds, on a public sample video (saving fails: no sign-in)
   const rallies = devSample.rallies.map(([s, e]) => ({ s, e, st: 'auto' as const, as: s, ae: e }));
+  // ?admin: see the admin-only parts (e.g. voice names)
+  const admin = { user: null, isAdmin: true } as unknown as Parameters<typeof AuthPreviewProvider>[0]['value'];
   return (
+    <AuthPreviewProvider value={location.search.includes('admin') ? admin : null as unknown as typeof admin}>
     <MemoryRouter initialEntries={[`/${location.search}`]}>
       <div className="mx-auto max-w-7xl px-4 pb-28 pt-[4.5rem]">
         <GamePlayer canDelete samplePlayers={['Alex', 'Ben', 'Chris', 'Dana', 'Eli', 'Finn', 'Gabe', 'Hana', 'Ivan', 'Jo']
@@ -65,6 +68,7 @@ export function DevGame() {
           } }} />
       </div>
     </MemoryRouter>
+    </AuthPreviewProvider>
   );
 }
 
