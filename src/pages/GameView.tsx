@@ -1629,7 +1629,11 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
   }
   const setMb = (t: Team, id: string | null) => setC(x => tidy({ ...x, [t]: { ...x[t], mb: id ?? undefined, ...(id && x[t].lib === id ? { lib: undefined } : {}) } }));
   // a sub who is the libero (starting on the bench while a middle plays in their place)
-  const setLib = (t: Team, id: string | null) => setC(x => tidy({ ...x, [t]: { ...x[t], lib: id ?? undefined, mb: id ? undefined : x[t].mb } }));
+  // Turning the libero off when the extra middle is the one on court (the libero was the sub) means the team
+  // no longer has a libero at all (e.g. he got injured): it plays six with two ordinary middles.
+  const setLib = (t: Team, id: string | null) => setC(x => tidy({ ...x, [t]: { ...x[t], lib: id ?? undefined,
+    mb: id ? undefined : x[t].mb && x[t].bench.includes(x[t].mb) ? x[t].mb : undefined } }));
+  const noLibero = (t: Team) => setC(x => tidy({ ...x, [t]: { ...x[t], mb: undefined, lib: undefined } }));
   const setL6 = (t: Team, id: string, front: boolean, serve?: 'partner') => setC(x => tidy({ ...x, [t]: { ...x[t], l6: id, l6front: front, l6serve: serve } }));
   // the player opposite the back-court player (who he swaps with): the other middle, or the setter
   const partnerOf = (t: Team) => { const s = c[t], i = s.l6 ? s.pos.indexOf(s.l6) : -1; return i >= 0 ? s.pos[(i + 3) % 6] : ''; };
@@ -1639,7 +1643,9 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
   const save = async () => {
     if (fromRally) {  // a lineup change at this rally: saved on the rally, the starting teams stay as they are
       const { score: _s, ...lineup } = c;
-      fromRally.onSave(assignMiddles(lineup));
+      // no extra middle / libero is saved as '' so later rallies don't take them back from the rotation
+      const explicit = (sd: CourtSetup['a']) => sd.mb ? sd : { ...sd, mb: '', lib: '' };
+      fromRally.onSave(assignMiddles({ ...lineup, a: explicit(lineup.a), b: explicit(lineup.b) }));
       onClose();
       return;
     }
@@ -1804,9 +1810,10 @@ function TeamsDialog({ game, players, onClose, video, fromRally }: {
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="w-14 text-muted">Team {t.toUpperCase()}</span>
                         <span className="text-muted">Libero</span>
-                        <select value={c[t].lib ?? ''} onChange={e => setC(x => tidy({ ...x, [t]: { ...x[t], lib: e.target.value } }))}
+                        <select value={c[t].lib ?? ''} onChange={e => e.target.value === '-' ? noLibero(t) : setC(x => tidy({ ...x, [t]: { ...x[t], lib: e.target.value } }))}
                           className="rounded-md border border-line bg-raised px-1.5 py-1 text-ink outline-none">
                           {[...new Set([...c[t].pos, ...c[t].bench])].filter(p => p && p !== c[t].mb).map(p => <option key={p} value={p}>{name(p)}</option>)}
+                          <option value="-">No libero (plays six, two middles)</option>
                         </select>
                       </div>
                       {start.mid ? (

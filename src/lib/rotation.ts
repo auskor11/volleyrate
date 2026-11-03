@@ -48,6 +48,7 @@ export const rotationOf = (roles: Position[]): number =>
  * at the first rally so the libero can stand in for whichever is in the back row.
  */
 export interface Side {
+  // mb / lib: the extra middle and the libero ('' = none, set by hand mid-game, e.g. the libero got injured)
   pos: string[]; roles: Position[]; bench: string[]; mb?: string; lib?: string; mid?: [string, string];
   l6?: string;        // six-player team: its back-court player ('' = none)
   l6front?: boolean;  // …who plays front court too (otherwise he swaps with the player opposite him at the front row)
@@ -356,8 +357,10 @@ const handSet = (r?: Rally) => (r?.court?.manual ? r.court : undefined);
 function withDetails(hand: CourtState, from: CourtState): CourtState {
   const side = (t: Team): Side => {
     const h = normSide(hand[t]), f = from[t];
-    return { ...h, ...(h.mb === undefined && f.mb ? { mb: f.mb } : {}), ...(h.lib === undefined && f.lib ? { lib: f.lib } : {}),
-      ...(h.mid === undefined && f.mid ? { mid: f.mid } : {}), ...(h.l6 === undefined && f.l6 !== undefined ? { l6: f.l6, ...(f.l6front ? { l6front: true } : {}), ...(f.l6serve ? { l6serve: f.l6serve } : {}) } : {}) };
+    // '' means the reviewer took it away (no extra middle / no libero any more): never refill it
+    const noLibero = h.mb === '' || h.lib === '';
+    return { ...h, ...(h.mb === undefined && f.mb ? { mb: f.mb } : {}), ...(h.lib === undefined && f.lib && !noLibero ? { lib: f.lib } : {}),
+      ...(h.mid === undefined && f.mid && !noLibero ? { mid: f.mid } : {}), ...(h.l6 === undefined && f.l6 !== undefined ? { l6: f.l6, ...(f.l6front ? { l6front: true } : {}), ...(f.l6serve ? { l6serve: f.l6serve } : {}) } : {}) };
   };
   return { a: side('a'), b: side('b'), serving: hand.serving };
 }
