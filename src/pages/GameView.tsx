@@ -10,6 +10,8 @@ import { createPlayer, withOffset, type YTPlayer } from '../lib/youtube';
 import { cameraLabel, cameras, serveGuesses } from '../lib/cameras';
 import { AddCamera } from '../components/AddCamera';
 import { RefreshDetector } from '../components/RefreshDetector';
+import { useVoice, voiceSupported } from '../components/useVoice';
+import { applyVoice, parseVoice } from '../lib/voice';
 import { avgGrade, computeStats, sameTeamIn, type StatKey } from '../lib/stats';
 import { buildModel, effectiveRatings, type RatingModel } from '../lib/engine';
 import { useEngineSettings } from '../lib/rated';
@@ -79,6 +81,7 @@ const SKILL_KEYS = Object.keys(SKILLS) as Skill[];
  * plays (touch time = tap time minus reaction lag) and from the keyboard on a laptop.
  */
 const REACTION = 0.3;  // seconds between seeing a touch and tapping the name
+const VOICE_LAG = 1;    // seconds between seeing a touch and the name showing up in speech recognition
 const PLAYER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 const SKILL_KEYS_KB: Record<string, Skill> = { q: 'serve', w: 'receive', e: 'set', r: 'attack', t: 'block', y: 'dig', i: 'free', u: 'other' };
 // grade the last touch (receive / dig / set: 3 / 2 / 1) or say what kind of attack it was
@@ -218,6 +221,25 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
     onChange(saved.map((x, j) => (j === i ? f(x) : x)), rally.end);
   }
 
+  // voice tagging: "Alex serve, Ben pass, Chris set, Dana kill" (a phrase can cover part of a rally or all of it)
+  const vc = useRef({ rally, saved, pre, blocked, onChange, onDone });
+  vc.current = { rally, saved, pre, blocked, onChange, onDone };
+  const voice = useVoice(
+    (text, times) => {
+      const c = vc.current;
+      if (!c.rally || c.blocked) return;
+      const ops = parseVoice(text, players);
+      if (!ops.length) return;
+      const r = applyVoice(c.saved, c.pre, ops, times.map(t => Math.max(c.rally!.s, t)));
+      if (!r.added && !r.end && !ops.some(o => o.op === 'undo')) return;
+      setSel(null);
+      c.onChange(r.touches, r.end);
+      if (r.end) c.onDone();
+    },
+    text => parseVoice(text, players).filter(o => o.op === 'touch').length,
+    () => now() - (playing() ? VOICE_LAG : 0),
+  );
+
   // laptop shortcuts
   const keys = useRef({ addTouch, undo, finish, onSkip, togglePlay, onPrev, onNext, sorted, touches, sug, pickSkill, detailOpts, setSheet });
   keys.current = { addTouch, undo, finish, onSkip, togglePlay, onPrev, onNext, sorted, touches, sug, pickSkill, detailOpts, setSheet };
@@ -262,8 +284,22 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
         <button className={`${btn} px-3 py-1.5`} disabled={!hasPrev} onClick={onPrev}>◀</button>
         <div className="min-w-0 flex-1 truncate text-center text-sm">{status}</div>
         <button className={`${btn} px-3 py-1.5`} disabled={!hasNext} onClick={onNext}>▶</button>
+        {voiceSupported() && (
+          <button className={`${btn} px-2.5 py-1.5 ${voice.on ? 'border-bad bg-bad/15 text-bad' : ''}`} onClick={voice.toggle}
+            title="Voice tagging: say the touches as they happen">{voice.on ? '● Stop' : '🎤 Voice'}</button>
+        )}
         <button className={`${btn} hidden px-2.5 py-1.5 lg:block`} onClick={() => setSheet(true)} title="Keyboard shortcuts (?)">⌨ ?</button>
       </div>
+      {voice.error && <p className="text-xs text-bad">{voice.error}</p>}
+      {voice.on && (
+        <div className="rounded-lg bg-raised px-3 py-1.5 text-xs">
+          <div className="text-muted">
+            Listening. Say each touch as it happens: <b className="text-ink">"Alex serve, Ben pass, Chris set, Dana kill"</b>.
+            {' '}End with kill / ace / point or out / net / error. Also: tip, perfect / okay / poor, guest A, undo.
+          </div>
+          {voice.heard && <div className="mt-1 truncate">Heard: <i>{voice.heard}</i></div>}
+        </div>
+      )}
       {rally && (
         <>
           {sug && (
