@@ -295,7 +295,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
         <div className="rounded-lg bg-raised px-3 py-1.5 text-xs">
           <div className="text-muted">
             Listening. Say each touch as it happens: <b className="text-ink">"Alex serve, Ben pass, Chris set, Dana kill"</b>.
-            {' '}End with kill / ace / point or out / net / error. Also: tip, perfect / okay / poor, guest A, undo.
+            {' '}End with kill / ace / point or out / net / error. Also: tip, perfect / okay / poor, guest A / guest B (or guest one / guest two), undo.
           </div>
           {voice.heard && <div className="mt-1 truncate">Heard: <i>{voice.heard}</i></div>}
         </div>

@@ -22,6 +22,9 @@ const ERROR_WORDS = new Set(['error', 'errors', 'out', 'net', 'fault', 'miss', '
 const GRADE_WORDS: Record<string, Grade> = { perfect: 3, great: 3, good: 3, okay: 2, ok: 2, decent: 2, poor: 1, bad: 1 };
 const UNDO_WORDS = new Set(['undo', 'scratch', 'delete', 'cancel']);
 const GRADED: Skill[] = ['receive', 'dig', 'set'];
+const GUEST_WORDS = new Set(['guest', 'guests', 'guess', 'guessed', 'guesses']);
+const GUEST_A = new Set(['a', 'eh', 'hey', 'ay', 'ey', 'one', '1', '8']);
+const GUEST_B = new Set(['b', 'bee', 'be', 'bea', 'beat', 'v', 'vee', 'p', 'pee', 'd', 'the', 'two', 'to', 'too', '2']);
 
 function near(a: string, b: string) {
   if (a === b) return true;
@@ -41,10 +44,13 @@ export interface VoicePlayer { id: string; name: string; number: number | null }
 /** Who a word means: a first name (or close to it, for speech slips), a full name, or a shirt number. */
 function playerAt(words: string[], i: number, players: VoicePlayer[]): [string, number] | null {
   const w = words[i];
-  if (w === 'guest') {
+  // speech often hears "Guest B" as "guessed be", "guest v", "guestbee"…
+  const glued = /^(?:guest|guess)(a|b|bee|be|eh)$/.exec(w);
+  if (glued) return [glued[1] === 'a' || glued[1] === 'eh' ? 'guest-a' : 'guest-b', 1];
+  if (GUEST_WORDS.has(w)) {
     const t = words[i + 1];
-    if (t === 'a' || t === 'eh' || t === 'hey') return ['guest-a', 2];
-    if (t === 'b' || t === 'bee' || t === 'be') return ['guest-b', 2];
+    if (t && GUEST_A.has(t)) return ['guest-a', 2];
+    if (t && GUEST_B.has(t)) return ['guest-b', 2];
     return null;
   }
   for (const pl of players) {
