@@ -3,6 +3,7 @@ import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import { PhotoEditor } from '../components/Avatar';
 import { removeHighlight, useHighlights, type Highlight } from '../lib/highlights';
+import { reelCams } from '../lib/cameras';
 import { ClipReel } from '../components/ClipReel';
 import { RatingChart } from '../components/RatingChart';
 import { MedalBadge } from '../components/MatchCard';
@@ -408,7 +409,7 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
                   if (!g) return [];
                   // the whole rally, stretched to include the touch if it was tagged after the clip ends
                   return [{
-                    key: `${cl.gameId}|${cl.t}|${i}`, youtubeId: g.youtubeId, s: cl.s, e: Math.max(cl.e, cl.t + 2),
+                    key: `${cl.gameId}|${cl.t}|${i}`, youtubeId: g.youtubeId, cams: reelCams(g), s: cl.s, e: Math.max(cl.e, cl.t + 2),
                     label: `${STAT_LABELS[open]} ${i + 1} · ${cl.title}`, sub: cl.date, star: starredFor(cl.gameId, cl.s) || undefined,
                     extra: <Link to={`/games/${cl.gameId}?t=${cl.t}&r=${cl.s}`} className="shrink-0 text-xs text-muted underline">in game</Link>,
                   }];
@@ -461,6 +462,7 @@ function Attr({ k, label, p, model }: { k: string; label: string; p: { id: strin
 export function Highlights({ playerId, name, sample }: { playerId: string; name: string; sample?: Highlight[] }) {
   const saved = useHighlights({ playerId });
   const list = sample ?? saved;  // sample: dev preview only
+  const games = useGames();
   const auth = useAuth();
   const me = auth?.user?.email?.toLowerCase();
   const canRemove = (h: Highlight) => auth?.isAdmin || h.by === me || auth?.member?.playerId === playerId;
@@ -478,7 +480,7 @@ export function Highlights({ playerId, name, sample }: { playerId: string; name:
         const h = list.find(x => x.id === c.key);
         return h && <ShareRally gameId={h.gameId} rally={h} title={`${h.title} · ${h.note || `rally at ${fmtTime(h.s)}`}`} />;
       }} clips={list.map(h => ({
-        key: h.id, youtubeId: h.youtubeId, s: h.s, e: h.e,
+        key: h.id, youtubeId: h.youtubeId, cams: reelCams(games?.find(g => g.id === h.gameId && g.youtubeId === h.youtubeId)), s: h.s, e: h.e,
         label: h.note || `Rally at ${fmtTime(h.s)}`,
         sub: `${h.title} · ${fmtDate(h.date)}${h.by !== me && h.byName ? ` · added by ${h.byName.split(' ')[0]}` : ''}`,
         extra: <>

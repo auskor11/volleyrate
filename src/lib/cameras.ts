@@ -91,6 +91,13 @@ export function serveGuesses(g: Game): (rallyStart: number) => { team: Team; sur
 export const cameraLabel = (a: Pick<Angle, 'name' | 'kind' | 'behind'>) =>
   a.kind === 'back' && a.behind ? `${a.name} (behind ${a.behind.toUpperCase()})` : a.name;
 
+/** A game's cameras for a clip playlist (main first), or undefined when it only has one. */
+export function reelCams(g: Game | undefined): ReelCam[] | undefined {
+  const cs = g ? cameras(g).filter(a => a.youtubeId) : [];
+  return cs.length > 1 ? cs.map(a => ({ label: cameraLabel(a), kind: a.kind, youtubeId: a.youtubeId, offset: a.offset })) : undefined;
+}
+export interface ReelCam { label: string; kind: CameraKind; youtubeId: string; offset: number }  // offset: camera time = game time + offset
+
 /**
  * Line a second camera up with the main one from their contact sounds: the offset at which the most sharp
  * sounds coincide. Returns null if too few sounds match to trust it.

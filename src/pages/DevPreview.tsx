@@ -8,6 +8,7 @@ import { AuthPreviewProvider } from '../lib/auth';
 import { GamePlayer } from './GameView';
 import { GamesList } from './Games';
 import { Highlights } from './Players';
+import { ClipReel } from '../components/ClipReel';
 import devSample from './devSample.json';
 import { AttrBar, PlayerCard } from '../components/PlayerCard';
 import type { Player } from '../lib/data';
@@ -86,6 +87,9 @@ export function DevHighlights() {
     title: 'Sample game', date: '2026-09-26', s, e, note, by: 'x', byName: 'Alex' });
   return <MemoryRouter><div className="mx-auto max-w-3xl p-4">
     <Highlights playerId="jo" name="Jo" sample={[h('a', 40, 44, 'first'), h('b', 100, 104, 'second'), h('c', 200, 204, 'third')]} />
+    <h2 className="mt-6 font-semibold">A playlist from a game with two cameras</h2>
+    <ClipReel clips={[40, 100].map((s, i) => ({ key: `c${i}`, youtubeId: 'M7lc1UVf-VE', s, e: s + 6, label: `Kill ${i + 1}`, sub: 'Sample game',
+      cams: [{ label: 'Side', kind: 'side' as const, youtubeId: 'M7lc1UVf-VE', offset: 0 }, { label: 'Back (behind A)', kind: 'back' as const, youtubeId: 'aqz-KE-bpKQ', offset: 5 }] }))} />
   </div></MemoryRouter>;
 }
 

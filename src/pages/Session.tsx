@@ -7,6 +7,7 @@ import { computeStats, sameTeamIn, STAT_LABELS, type StatKey } from '../lib/stat
 import { tier } from '../lib/ratings';
 import { fmtDay, useRatingHistory } from '../lib/history';
 import { Avatar } from '../components/Avatar';
+import { reelCams } from '../lib/cameras';
 import { ClipReel } from '../components/ClipReel';
 import { MEDAL_COLOR, MedalBadge } from '../components/MatchCard';
 import { GAME_RATING, matchRatings, type Medal } from '../lib/gameRating';
@@ -78,7 +79,7 @@ export function Session() {
     return g.rallies.filter(r => r.st !== 'bad').sort((a, b) => a.s - b.s).flatMap(r => {
       const res = rallyResult(r, same);
       if (!res?.good || !['Kill', 'Ace', 'Block', 'Set over'].includes(res.label) || isGuest(res.who)) return [];
-      return [{ key: `${g.id}|${r.s}`, youtubeId: g.youtubeId, s: r.s, e: r.e,
+      return [{ key: `${g.id}|${r.s}`, youtubeId: g.youtubeId, cams: reelCams(g), s: r.s, e: r.e,
         label: `${res.label} · ${name(res.who)}${res.assist && !isGuest(res.assist) ? ` (assist ${name(res.assist)})` : ''}`, sub: g.title }];
     });
   });
@@ -86,7 +87,7 @@ export function Session() {
     .sort((a, b) => a.title.localeCompare(b.title) || a.t - b.t)
     .flatMap((c, i) => {
       const g = dayGames.find(x => x.id === c.gameId);
-      return g ? [{ key: `${c.gameId}|${c.t}|${i}`, youtubeId: g.youtubeId, s: c.s, e: Math.max(c.e, c.t + 2), label: `${lab(reel)} · ${name(c.who)}`, sub: g.title }] : [];
+      return g ? [{ key: `${c.gameId}|${c.t}|${i}`, youtubeId: g.youtubeId, cams: reelCams(g), s: c.s, e: Math.max(c.e, c.t + 2), label: `${lab(reel)} · ${name(c.who)}`, sub: g.title }] : [];
     });
 
   return (

@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPlayer, type YTPlayer } from '../lib/youtube';
 import { fmtTime } from '../lib/games';
+import type { ReelCam } from '../lib/cameras';
 
 export interface ReelClip {
   key: string;
   youtubeId: string;
-  s: number;            // clip start / end (video seconds)
+  s: number;            // clip start / end (seconds in the game's main video)
   e: number;
+  cams?: ReelCam[];     // the game's cameras when it has more than one (main first)
   label: string;        // first line in the list
   sub: string;          // second line (game, date, …)
   star?: string;        // saved as a highlight (for whom), marked ★
@@ -50,6 +52,14 @@ export function ClipReel({ clips, autoStart = false, nowPlaying }: { clips: Reel
   const yt = useRef<YTPlayer | null>(null);
   const loadedAt = useRef(0);   // when the current clip was loaded (ignore stale "ended" events just after)
   const video = useRef('');     // the YouTube video in the player now
+  const offset = useRef(0);     // …and its camera's offset (camera time = game time + offset)
+  // the camera picked here, kept for the next clips: the same camera by name, else the same kind, else the main one
+  const [pref, setPref] = useState<{ label: string; kind: string } | null>(null);
+  const prefRef = useRef(pref);
+  prefRef.current = pref;
+  const camFor = (c: ReelClip, p = prefRef.current): ReelCam =>
+    (p && (c.cams?.find(x => x.label === p.label) ?? c.cams?.find(x => x.kind === p.kind))) || c.cams?.[0]
+    || { label: '', kind: 'side', youtubeId: c.youtubeId, offset: 0 };
   const state = useRef({ clips, cur, reel });
   state.current = { clips, cur, reel };
 
@@ -61,13 +71,30 @@ export function ClipReel({ clips, autoStart = false, nowPlaying }: { clips: Reel
     loadedAt.current = Date.now();
     // Same video: jump within it. Loading a video again makes an iPhone leave fullscreen, so that only
     // happens when the next clip is from another game. (No endSeconds: the watcher below stops each clip.)
-    if (video.current === c.youtubeId) {
-      yt.current.seekTo(Math.max(0, c.s - 0.5), true);
+    const cam = camFor(c);
+    show(cam, c.s - 0.5);
+  }
+  function show(cam: ReelCam, gameTime: number) {
+    if (!yt.current) return;
+    const at = Math.max(0, gameTime + cam.offset);
+    offset.current = cam.offset;
+    if (video.current === cam.youtubeId) {
+      yt.current.seekTo(at, true);
       yt.current.playVideo();
     } else {
-      video.current = c.youtubeId;
-      yt.current.loadVideoById({ videoId: c.youtubeId, startSeconds: Math.max(0, c.s - 0.5) });
+      video.current = cam.youtubeId;
+      yt.current.loadVideoById({ videoId: cam.youtubeId, startSeconds: at });
     }
+  }
+  // switch camera mid-clip, at the same moment of the rally
+  function switchCam(cam: ReelCam) {
+    const c = state.current.cur !== null ? state.current.clips[state.current.cur] : undefined;
+    setPref({ label: cam.label, kind: cam.kind });
+    prefRef.current = { label: cam.label, kind: cam.kind };
+    if (!c || !yt.current) return;
+    loadedAt.current = Date.now();
+    const t = yt.current.getCurrentTime() - offset.current;
+    show(cam, t >= c.s - 1 && t <= c.e + 1 ? t : c.s - 0.5);
   }
   const startReel = (from = 0) => { setReel(true); state.current.reel = true; play(from); };
   // Autoplay: after a clip you picked, carry on with the next one (remembered on this device)
@@ -102,7 +129,7 @@ export function ClipReel({ clips, autoStart = false, nowPlaying }: { clips: Reel
       const c = cur !== null ? clips[cur] : undefined;
       const p = yt.current;
       if (!c || !p || Date.now() - loadedAt.current < 1500 || p.getPlayerState() !== 1) return;
-      if (p.getCurrentTime() >= c.e + 0.5) { if (reel) next(); else p.pauseVideo(); }
+      if (p.getCurrentTime() - offset.current >= c.e + 0.5) { if (reel) next(); else p.pauseVideo(); }
     }, 250);
     return () => { dead = true; clearInterval(watch); yt.current?.destroy(); yt.current = null; };
   }, [first?.youtubeId]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -124,6 +151,17 @@ export function ClipReel({ clips, autoStart = false, nowPlaying }: { clips: Reel
         </span>
       </div>
       <div ref={el} className="mt-2 aspect-video overflow-hidden rounded-lg bg-black" />
+      {c?.cams && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-muted">Camera</span>
+          {c.cams.map(cam => (
+            <button key={cam.label} onClick={() => switchCam(cam)}
+              className={`rounded-md border px-2 py-1 ${camFor(c, pref).label === cam.label ? 'border-ball bg-ball/15 font-semibold text-ball' : 'border-line text-muted'}`}>
+              🎥 {cam.label}
+            </button>
+          ))}
+        </div>
+      )}
       {c && nowPlaying && <div className="mt-1.5 flex flex-wrap items-center gap-1.5">{nowPlaying(c)}</div>}
       {reel && cur !== null && (
         <div className="mt-1.5 flex gap-1.5 text-xs">
