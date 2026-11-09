@@ -3,7 +3,7 @@ import {
   GoogleAuthProvider, getRedirectResult, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut,
   type User,
 } from 'firebase/auth';
-import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocFromCache, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import type { Member } from './data';
 
@@ -64,11 +64,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return onAuthStateChanged(auth, async u => {
       setLoading(true);
       setUser(u);
+      const email = u?.email?.toLowerCase();
+      // the copy kept on this device first, so the app opens straight away with a weak signal or none
+      let shown = false;
+      if (email) {
+        try {
+          const c = await getDocFromCache(doc(db, 'members', email));
+          if (c.exists()) { setMemberState({ email, playerId: null, role: 'player', ...(c.data() as Partial<Member>) }); setLoading(false); shown = true; }
+        } catch { /* not on this device yet */ }
+      }
       try {
-        setMemberState(u?.email ? await loadMember(u.email.toLowerCase()) : null);
+        setMemberState(email ? await loadMember(email) : null);
       } catch (e) {
-        setError(String((e as Error).message || e));
-        setMemberState(null);
+        if (!shown) { setError(String((e as Error).message || e)); setMemberState(null); }  // offline: keep the saved copy
       }
       setLoading(false);
     });

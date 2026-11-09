@@ -1,8 +1,11 @@
 // Keeps the app itself on the device so it opens with no internet (the data is kept by Firestore, saved
-// videos by the app). Pages: network first, falling back to the saved copy. Built files (/assets/, named by
-// their contents, so they never change): saved copy first. Each time a newer version of the app loads, its
-// files are saved and the old ones are removed.
+// videos by the app). Pages: network first, but after 3 seconds (a weak signal hangs rather than fails) or
+// with no connection at all, the saved copy. Built files (/assets/, named by their contents, so they never
+// change): saved copy first. Each time a newer version of the app loads, its files are saved and the old ones
+// are removed. Google Fonts: saved copy first, so the app looks the same offline.
 const CACHE = 'volleyrate-app';
+const FONTS = 'volleyrate-fonts';
+const PAGE_WAIT = 3000;
 const SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 
 // every built file this version needs: those in the page, and the ones the main bundle loads later (game page, admin)
@@ -39,18 +42,31 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.origin !== location.origin) return;            // Firestore, YouTube, fonts: left alone
+  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
+    e.respondWith((async () => {
+      const hit = await caches.match(req, { cacheName: FONTS });
+      if (hit) return hit;
+      const r = await fetch(req);
+      if (r.ok && r.type !== 'opaque') { const c = await caches.open(FONTS); c.put(req, r.clone()); }
+      return r;
+    })());
+    return;
+  }
+  if (url.origin !== location.origin) return;            // Firestore, YouTube: left alone
   if (req.mode === 'navigate') {
     e.respondWith((async () => {
-      try {
-        const r = await fetch(req);
-        if (r.ok && (r.headers.get('content-type') || '').includes('text/html')) {
-          const html = await r.clone().text();
-          e.waitUntil(saveVersion(html).catch(() => {}));
-        }
+      const saved = await caches.match('/', { ignoreVary: true });
+      const live = fetch(req).then(async r => {
+        if (r.ok && (r.headers.get('content-type') || '').includes('text/html')) await saveVersion(await r.clone().text()).catch(() => {});
         return r;
+      });
+      e.waitUntil(live.catch(() => {}));  // keep updating the saved copy in the background
+      if (saved && self.navigator.onLine === false) return saved;
+      const wait = saved ? new Promise(res => setTimeout(() => res(saved), PAGE_WAIT)) : new Promise(() => {});
+      try {
+        return await Promise.race([live, wait]);
       } catch {
-        return (await caches.match('/', { ignoreVary: true })) || new Response('Offline, and this app has not been saved on this device yet.', { status: 503 });
+        return saved || new Response('Offline, and this app has not been saved on this device yet.', { status: 503 });
       }
     })());
     return;

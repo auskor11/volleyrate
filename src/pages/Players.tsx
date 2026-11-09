@@ -348,7 +348,10 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
       Game stats appear here once games are tagged (Games → a game → Tag).
     </section>
   );
-  const c = (k: StatKey) => st[k].length;
+  // forced receive / dig errors and the error ending a scramble count half, as in the ratings
+  const c = (k: StatKey) => st[k].reduce((t, x) => t + (x.w ?? 1), 0);
+  const halves = (k: StatKey) => st[k].some(x => x.w !== undefined);
+  const fmtN = (x: number) => (Number.isInteger(x) ? String(x) : x.toFixed(1));
   const rates: [string, string][] = [
     ['Kill %', ratio(c('kill'), c('attack'))],
     ['Hitting eff.', c('attack') ? `${Math.round((100 * (c('kill') - c('aerr') - c('blocked'))) / c('attack'))}%` : '–'],
@@ -379,8 +382,9 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
             <div className="flex flex-1 flex-wrap gap-1.5">
               {g.stats.map(({ k, good }) => (
                 <button key={k} onClick={() => setOpen(open === k ? null : k)}
+                  title={halves(k) ? `${st[k].length} in all: forced errors (off an ace, kill or block) and errors ending a scramble count half` : undefined}
                   className={`rounded-lg px-2 py-1 text-xs ${open === k ? 'bg-raised ring-1 ring-ball' : 'bg-raised/50'}`}>
-                  <b className={`font-display text-base ${!c(k) ? 'text-muted' : good === true ? 'text-good' : good === false ? 'text-bad' : 'text-ink'}`}>{c(k)}</b>
+                  <b className={`font-display text-base ${!c(k) ? 'text-muted' : good === true ? 'text-good' : good === false ? 'text-bad' : 'text-ink'}`}>{fmtN(c(k))}</b>
                   {' '}<span className="text-muted">{STAT_LABELS[k]}</span>
                 </button>
               ))}
@@ -410,7 +414,7 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
                   // the whole rally, stretched to include the touch if it was tagged after the clip ends
                   return [{
                     key: `${cl.gameId}|${cl.t}|${i}`, youtubeId: g.youtubeId, cams: reelCams(g), s: cl.s, e: Math.max(cl.e, cl.t + 2),
-                    label: `${STAT_LABELS[open]} ${i + 1} · ${cl.title}`, sub: cl.date, star: starredFor(cl.gameId, cl.s) || undefined,
+                    label: `${STAT_LABELS[open]} ${i + 1}${cl.w !== undefined ? ' (counts half)' : ''} · ${cl.title}`, sub: cl.date, star: starredFor(cl.gameId, cl.s) || undefined,
                     extra: <Link to={`/games/${cl.gameId}?t=${cl.t}&r=${cl.s}`} className="shrink-0 text-xs text-muted underline">in game</Link>,
                   }];
                 })} />

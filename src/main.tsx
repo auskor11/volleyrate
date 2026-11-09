@@ -8,6 +8,8 @@ applyTheme(savedTheme())
 
 // keep the app on the device so it opens offline (production only: the dev server serves files differently)
 if (import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {})
+// with videos saved for offline, ask the browser to keep this site's storage (the app, its data, the videos)
+void import('./lib/offline').then(async m => { if ((await m.savedVideos()).length) await navigator.storage?.persist?.(); }).catch(() => {})
 
 // sample-data design preview, only in `npm run dev`
 const DevPreview = import.meta.env.DEV && location.pathname.startsWith('/__preview')
