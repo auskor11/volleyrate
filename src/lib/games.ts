@@ -63,7 +63,7 @@ export interface Touch { p: string; k: Skill; t: number; q?: Grade; a?: AttackTy
 /** A blockout or block error straight after the other team's attack: the attacker scores, but the blocker isn't
  *  marked down (getting a hand on the ball is good): it counts as a block touch, not an error. */
 export const isBlockout = (ts: Touch[], end: RallyEnd, sameTeam?: SameTeam) =>
-  end.r === 'error' && ts[end.i]?.k === 'block' && forcedBy(ts, end, sameTeam) >= 0;
+  end.r === 'error' && ts[end.i]?.k === 'block' && ts[end.i - 1]?.k === 'attack' && forcedBy(ts, end, sameTeam) === end.i - 1;
 
 /** Guests are tagged by team so the app knows their side (older tags just say 'guest'). */
 export const isGuest = (p?: string) => !!p && (p === 'guest' || p.startsWith('guest-'));
@@ -112,9 +112,27 @@ export type SameTeam = (a: string, b: string) => boolean;
 export function forcedBy(touches: Touch[], end: RallyEnd, sameTeam?: SameTeam): number {
   if (end.r !== 'error' || end.i < 1) return -1;
   const err = touches[end.i], prev = touches[end.i - 1];
-  if (!prev || !err || prev.p === err.p || !FORCED[prev.k]?.includes(err.k)) return -1;
-  const defensive = err.k === 'receive' || err.k === 'dig' || err.k === 'block';
-  return defensive || !sameTeam?.(prev.p, err.p) ? end.i - 1 : -1;
+  if (prev && err && prev.p !== err.p && FORCED[prev.k]?.includes(err.k)) {
+    const defensive = err.k === 'receive' || err.k === 'dig' || err.k === 'block';
+    if (defensive || !sameTeam?.(prev.p, err.p)) return end.i - 1;
+  }
+  return keptOutOfPlay(touches, end, sameTeam);
+}
+
+/**
+ * An attack the other team touched but never got back over: they played it up to 3 times (a block doesn't
+ * count), sent nothing over (no attack or free ball), and the rally ended on their error. The attack is the
+ * kill, like in standard volleyball stats. Needs the teams (court setup). Returns the attack's index, or -1.
+ */
+function keptOutOfPlay(ts: Touch[], end: RallyEnd, sameTeam?: SameTeam): number {
+  if (!sameTeam) return -1;
+  let j = -1;
+  for (let i = end.i - 1; i >= 0; i--) if (ts[i].k === 'attack') { j = i; break; }
+  if (j < 0 || end.i - j < 2) return -1;
+  const att = ts[j], chain = ts.slice(j + 1, end.i + 1);
+  const otherTeam = (p: string) => (isGuest(p) && isGuest(att.p) ? p !== att.p : !sameTeam(p, att.p));
+  if (!chain.every(t => otherTeam(t.p)) || chain.some(t => t.k === 'attack' || t.k === 'free')) return -1;
+  return chain.filter(t => t.k !== 'block').length <= 3 ? j : -1;
 }
 
 /**

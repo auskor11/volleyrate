@@ -107,8 +107,10 @@ function gameCounts(g: Game): Record<string, Counts> {
       if (t.k === 'block' && prev?.k === 'attack' && prev.p !== t.p) c(prev.p).blocked++;
     } else {
       const f = forcedBy(ts, r.end, sameTeam);
-      // a blockout isn't the blocker's error (it stays a block touch); a forced receive / dig error counts half
-      const w = isBlockout(ts, r.end, sameTeam) ? 0 : f >= 0 && (t.k === 'receive' || t.k === 'dig') ? FORCED_ERROR_WEIGHT : 1;
+      // a blockout isn't the blocker's error (it stays a block touch); a forced receive / dig error counts half,
+      // and so does the error that ends a team's failed scramble after an attack (e.g. a hustle set off a bad dig)
+      const scramble = f >= 0 && f < r.end.i - 1;
+      const w = isBlockout(ts, r.end, sameTeam) ? 0 : f >= 0 && (t.k === 'receive' || t.k === 'dig' || scramble) ? FORCED_ERROR_WEIGHT : 1;
       c(t.p).errors += w;
       const ek = ERR[t.k]; if (ek) c(t.p)[ek] += w;
       if (f >= 0) credit(f);

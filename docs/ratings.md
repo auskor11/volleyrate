@@ -112,6 +112,7 @@ A rally counts only if it is not marked "Not a rally", has touches tagged, and h
     | Block | receive / dig | block point |
     | Set that goes over | receive / dig / block | set-over point (counts like an assist in set efficiency) |
 
+  - **An attack the other team couldn't get back over** also earns the kill (and its assist): they touched it up to 3 times (a block doesn't count), sent nothing over (no attack or free ball), and the rally ended on their error, e.g. attack → dig → hustle set into the net. The error at the end of that scramble counts **0.5**, like a forced receive. Needs the teams set up.
   - After an attack, a receive / dig / block error is always forced. Any other error (a set, a free ball, …) is forced only when the court setup puts the attacker and the player who erred on different teams.
   - A forced **receive or dig** error counts **0.5** against the defender's Receiving and Consistency (`FORCED_ERROR_WEIGHT`). Other forced errors (block, set, …) count in full.
 
