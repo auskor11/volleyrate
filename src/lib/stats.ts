@@ -52,7 +52,7 @@ export const LEADER_STATS: { k: StatKey; label: string }[] = [
   { k: 'kill', label: 'Kills' }, { k: 'ace', label: 'Aces' }, { k: 'blockpt', label: 'Block points' }, { k: 'assist', label: 'Assists' },
 ];
 
-export interface Clip { gameId: string; title: string; date: string; s: number; e: number; t: number; w?: number }  // w: counts this much (an error ending a scramble after an attack: 0.5)
+export interface Clip { gameId: string; title: string; date: string; s: number; e: number; t: number; w?: number }  // w: counts this much (a forced receive / dig error, or one ending a scramble after an attack: 0.5)
 export type PlayerStats = Record<StatKey, Clip[]>;
 
 const empty = (): PlayerStats =>
@@ -119,8 +119,10 @@ function addTouches(r: Rally, clip: (t: number) => Clip, add: Add, sameTeam?: Sa
   } else {
     // the serve / attack / block that forced this error also scored
     const f = forcedBy(ts, r.end, sameTeam);
-    // a blockout isn't the blocker's error; the error ending a scramble after an attack counts half
-    if (!isBlockout(ts, r.end, sameTeam)) add(t.p, ERROR[t.k] ?? 'oerr', { ...clip(t.t), ...(f >= 0 && f < r.end.i - 1 ? { w: 0.5 } : {}) });
+    // a blockout isn't the blocker's error; a forced receive / dig error, or the error ending a scramble after an
+    // attack, counts half (as in the player ratings)
+    const half = f >= 0 && (t.k === 'receive' || t.k === 'dig' || f < r.end.i - 1);
+    if (!isBlockout(ts, r.end, sameTeam)) add(t.p, ERROR[t.k] ?? 'oerr', { ...clip(t.t), ...(half ? { w: 0.5 } : {}) });
     if (f >= 0) {
       const by = ts[f];
       add(by.p, POINT[by.k], clip(by.t));
