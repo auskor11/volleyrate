@@ -3,7 +3,7 @@
 import { nextSkill, type AttackType, type Grade, type RallyEnd, type Skill, type Touch } from './games';
 
 export type VoiceOp =
-  | { op: 'touch'; p: string; k?: Skill; a?: AttackType; q?: Grade }
+  | { op: 'touch'; p: string; p2?: string; k?: Skill; a?: AttackType; q?: Grade }  // p2: a second blocker ("Brayden and Jeremy block")
   | { op: 'end'; r: RallyEnd['r'] }
   | { op: 'undo' };
 
@@ -21,6 +21,7 @@ const POINT_WORDS: Record<string, Skill | undefined> = { point: undefined, point
 const ERROR_WORDS = new Set(['error', 'errors', 'out', 'net', 'fault', 'miss', 'missed', 'mistake']);
 const GRADE_WORDS: Record<string, Grade> = { perfect: 3, great: 3, good: 3, okay: 2, ok: 2, decent: 2, poor: 1, bad: 1 };
 const UNDO_WORDS = new Set(['undo', 'scratch', 'delete', 'cancel']);
+const JOIN_WORDS = new Set(['and', 'plus', 'with', 'n']);
 const GRADED: Skill[] = ['receive', 'dig', 'set'];
 const GUEST_WORDS = new Set(['guest', 'guests', 'guess', 'guessed', 'guesses']);
 const GUEST_A = new Set(['a', 'eh', 'hey', 'ay', 'ey', 'one', '1', '8']);
@@ -79,11 +80,19 @@ export function parseVoice(text: string, players: VoicePlayer[]): VoiceOp[] {
   const words = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
   const ops: VoiceOp[] = [];
   let pending: Skill | undefined;  // a skill said before the name ("serve Alex")
+  let join = false;                // "and" just after a name with no skill yet: maybe a double block
   const lastTouch = () => { const o = ops[ops.length - 1]; return o?.op === 'touch' ? o : null; };
   for (let i = 0; i < words.length;) {
     const w = words[i];
     const pl = playerAt(words, i, players);
-    if (pl) { ops.push({ op: 'touch', p: pl[0], ...(pending ? { k: pending } : {}) }); pending = undefined; i += pl[1]; continue; }
+    if (pl) {
+      const t = lastTouch();
+      if (join && t && !t.p2 && (!t.k || t.k === 'block') && t.p !== pl[0]) t.p2 = pl[0];  // kept only if it turns out to be a block
+      else ops.push({ op: 'touch', p: pl[0], ...(pending ? { k: pending } : {}) });
+      pending = undefined; join = false; i += pl[1]; continue;
+    }
+    join = JOIN_WORDS.has(w) && !!lastTouch();
+    if (join) { i++; continue; }
     if (w === 'free' && words[i + 1] === 'ball') i++;
     const t = lastTouch();
     if (w in SKILL_WORDS) { if (t && !t.k) t.k = SKILL_WORDS[w]; else pending = SKILL_WORDS[w]; }
@@ -114,11 +123,17 @@ export function applyVoice(saved: Touch[], pre: Touch | null, ops: VoiceOp[], ti
     const prevT = list[list.length - 1]?.t ?? -Infinity;
     const t = Math.round(Math.max(times[n] ?? prevT, prevT + 0.1) * 10) / 10;
     const k = o.k ?? nextSkill(list);
-    const touch: Touch = { p: o.p, k, t, ...(o.a ? { a: o.a } : {}), ...(o.q ? { q: o.q } : {}) };
+    const touch: Touch = { p: o.p, k, t, ...(o.a ? { a: o.a } : {}), ...(o.q ? { q: o.q } : {}), ...(o.p2 && k === 'block' ? { p2: o.p2 } : {}) };
     // saying the serve replaces the prediction, like choosing Serve by hand
     list = virtual && k === 'serve' ? [touch] : [...list, touch];
     virtual = false;
     n++;
+    // "Ben and Chris" that wasn't a block: two touches after all
+    if (o.p2 && k !== 'block') {
+      const t2 = Math.round(Math.max(times[n] ?? t, t + 0.1) * 10) / 10;
+      list = [...list, { p: o.p2, k: nextSkill(list), t: t2 }];
+      n++;
+    }
   }
   return { touches: list, added: n };
 }

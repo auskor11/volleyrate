@@ -195,10 +195,11 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   const [skill, setSkill] = useState<Skill | null>(null);  // null = use the prediction
   const [sel, setSel] = useState<number | null>(null);     // touch being edited
   const [fixServer, setFixServer] = useState(false);
+  const [pairing, setPairing] = useState<number | null>(null);  // block touch waiting for its second blocker
   const [sheet, setSheet] = useState(false);  // shortcut sheet
   useEffect(() => { applyKeys(keysShown()); }, []);
   useEffect(() => { setSkill(null); }, [rally?.s, saved.length]);
-  useEffect(() => { setSel(null); setFixServer(false); }, [rally?.s]);
+  useEffect(() => { setSel(null); setFixServer(false); setPairing(null); }, [rally?.s]);
   // The predicted serve is shown as the first touch and saved with the next tap (or the result).
   const pre: Touch | null = rally && !saved.length && serve?.p ? { p: serve.p, k: 'serve', t: Math.round(serve.t * 10) / 10 } : null;
   const touches = pre ? [pre] : saved;
@@ -212,6 +213,12 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   const addTouch = (p: string) => {
     if (!rally) return;
     if (blocked) return;
+    if (pairing !== null) {  // the second blocker on a block
+      const b = touches[pairing];
+      if (b && b.k === 'block' && p !== b.p) onChange(touches.map((x, i) => i === pairing ? { ...x, p2: p } : x), rally.end);
+      setPairing(null);
+      return;
+    }
     if (sel !== null) {  // change who made the selected touch
       if (pre) onServer(p);
       else onChange(touches.map((x, i) => i === sel ? { ...x, p } : x), rally.end);
@@ -312,7 +319,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
 
   const status = !rally ? 'Tap a rally to start tagging'
     : blocked ? 'Enter both teams before tagging'
-    : res ? <>Ended: <b className={res.good ? 'text-good' : 'text-bad'}>{res.label} · {name(res.who)}</b>{res.assist && <span className="text-muted"> (assist {name(res.assist)})</span>}{res.note && <span className="text-muted"> ({name(res.noteWho)} {res.note})</span>}{wonBy && <span className="text-muted"> · Team {wonBy.toUpperCase()}'s point</span>}</>
+    : res ? <>Ended: <b className={res.good ? 'text-good' : 'text-bad'}>{res.label} · {name(res.who)}{res.who2 && <> + {name(res.who2)}</>}</b>{res.assist && <span className="text-muted"> (assist {name(res.assist)})</span>}{res.note && <span className="text-muted"> ({name(res.noteWho)} {res.note})</span>}{wonBy && <span className="text-muted"> · Team {wonBy.toUpperCase()}'s point</span>}</>
     : touches.length ? 'Next touch, or how did it end?' : 'Who served?';
   const why = serve?.why ?? '';
 
@@ -363,7 +370,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
                   {i > 0 && <span className="text-xs text-muted">→</span>}
                   <button onClick={() => setSel(sel === i ? null : i)} title="Tap to change or delete this touch"
                     className={`rounded-lg border px-2.5 py-1 ${sel === i ? 'ring-2 ring-ball' : ''} ${doubled === i ? 'outline outline-1 outline-bad' : ''} ${pre ? 'border-dashed border-ball/60' : 'border-line'} ${rally.end?.i === i ? (rally.end.r === 'point' ? 'bg-good/20 text-good' : 'bg-bad/20 text-bad') : 'bg-raised'}`}>
-                    <b className="font-semibold">{name(t.p)}</b> <span className="text-xs text-muted">{t.k === 'attack' && t.a ? ATTACK_TYPES[t.a] : SKILLS[t.k]}</span>
+                    <b className="font-semibold">{name(t.p)}{t.p2 && <> + {name(t.p2)}</>}</b> <span className="text-xs text-muted">{t.k === 'attack' && t.a ? ATTACK_TYPES[t.a] : SKILLS[t.k]}</span>
                     {t.q && <span className="ml-1 rounded bg-surface px-1 text-[10px] font-semibold">{t.q}</span>}
                   </button>
                 </Fragment>
@@ -409,6 +416,24 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
             </button>
           )}
           {!blocked && <>
+          {dt?.k === 'block' && (
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-muted">{name(dt.p)}'s block:</span>
+              {pairing === di ? (
+                <>
+                  <span className="font-semibold text-ball">tap the second blocker below</span>
+                  <button className="rounded-md border border-line px-2 py-1" onClick={() => setPairing(null)}>Cancel</button>
+                </>
+              ) : dt.p2 ? (
+                <button className="rounded-md border border-court bg-court/25 px-2 py-1 font-semibold" title="Remove the second blocker"
+                  onClick={() => { const { p2: _p2, ...rest } = dt; onChange(saved.map((x, j) => j === di ? rest : x), rally!.end); }}>
+                  with {name(dt.p2)} ✕
+                </button>
+              ) : (
+                <button className="rounded-md border border-line px-2 py-1 font-semibold" onClick={() => setPairing(di)}>＋ Second blocker (double block)</button>
+              )}
+            </div>
+          )}
           {detailOpts.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="w-full text-[11px] text-muted">
@@ -812,9 +837,9 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
     });
     const res = rallyResult(updated.find(r => r.s === r0.s)!, sameTeamIn(game));
     const who = (pid: string) => isGuest(pid) ? guestName(pid) : players?.find(p => p.id === pid)?.name ?? pid;
-    const chain = touches.map(t => `${who(t.p)} ${SKILLS[t.k].toLowerCase()}`).join(' → ');
+    const chain = touches.map(t => `${who(t.p)}${t.p2 ? ` + ${who(t.p2)}` : ''} ${SKILLS[t.k].toLowerCase()}`).join(' → ');
     commit(updated, r0.s, [`tag:${r0.as ?? r0.s}`, !touches.length ? `${label(r0)}: cleared tags`
-      : `${label(r0)}: ${chain}${res ? ` ⇒ ${res.label} · ${who(res.who)}` : ' (in progress)'}`]);
+      : `${label(r0)}: ${chain}${res ? ` ⇒ ${res.label} · ${who(res.who)}${res.who2 ? ` + ${who(res.who2)}` : ''}` : ' (in progress)'}`]);
   };
   const setCourt = (c: CourtState, what: string, manual = true) => {
     if (!rally) return;
@@ -930,7 +955,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
               const res = rallyResult(r, sameTeamIn(game));
               if (res) return (
                 <span className={`truncate rounded-full px-2 py-0.5 text-xs ${res.good ? 'bg-good/20 text-good' : 'bg-bad/20 text-bad'}`}>
-                  {res.label} · {name(res.who)}{res.assist && <span className="opacity-70"> (assist {name(res.assist)})</span>}{res.note && <span className="opacity-70"> ({name(res.noteWho)} {res.note})</span>}
+                  {res.label} · {name(res.who)}{res.who2 && <> + {name(res.who2)}</>}{res.assist && <span className="opacity-70"> (assist {name(res.assist)})</span>}{res.note && <span className="opacity-70"> ({name(res.noteWho)} {res.note})</span>}
                 </span>
               );
               if (mode === 'tag') return <span className="text-xs text-muted">{r.touches?.length ? `${r.touches.length} touches…` : 'untagged'}</span>;

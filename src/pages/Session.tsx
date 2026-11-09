@@ -80,7 +80,7 @@ export function Session() {
       const res = rallyResult(r, same);
       if (!res?.good || !['Kill', 'Ace', 'Block', 'Set over'].includes(res.label) || isGuest(res.who)) return [];
       return [{ key: `${g.id}|${r.s}`, youtubeId: g.youtubeId, cams: reelCams(g), s: r.s, e: r.e,
-        label: `${res.label} · ${name(res.who)}${res.assist && !isGuest(res.assist) ? ` (assist ${name(res.assist)})` : ''}`, sub: g.title }];
+        label: `${res.label} · ${name(res.who)}${res.who2 && !isGuest(res.who2) ? ` + ${name(res.who2)}` : ''}${res.assist && !isGuest(res.assist) ? ` (assist ${name(res.assist)})` : ''}`, sub: g.title }];
     });
   });
   const clips = reel === 'all' ? compilation : Object.entries(stats).flatMap(([id, st]) => st[reel].map(c => ({ ...c, who: id })))

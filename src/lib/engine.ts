@@ -13,7 +13,7 @@
 // - Only rallies tagged touch-by-touch (with a result) count; quick point tags lack attempt counts.
 // - No caps beyond the 0–99 scale.
 import { sameTeamIn } from './stats';
-import { DEFAULT_SET_GRADE, assistIndex, forcedBy, gameWeight, isApplied, isGuest, type Game, type Skill } from './games';
+import { DEFAULT_SET_GRADE, assistIndex, forcedBy, gameWeight, isApplied, isBlockout, isGuest, type Game, type Skill } from './games';
 import type { Player } from './data';
 import type { Ratings } from './ratings';
 
@@ -85,6 +85,7 @@ function gameCounts(g: Game): Record<string, Counts> {
     ts.forEach((t, j) => {
       c(t.p).touches++;
       const a = ATT[t.k]; if (a) c(t.p)[a]++;
+      if (t.p2) { c(t.p2).touches++; c(t.p2).blocks++; }  // a second blocker on the same block
       // optional grades, on touches that weren't the rally-ending error (errors count elsewhere);
       // a set nobody graded counts as OK
       if (j !== erred) {
@@ -96,7 +97,7 @@ function gameCounts(g: Game): Record<string, Counts> {
     if (!t) continue;
     const credit = (i: number) => {  // point for touch i (+ assist / blocked bookkeeping)
       const x = ts[i];
-      const pk = PT[x.k]; if (pk) c(x.p)[pk]++;
+      const pk = PT[x.k]; if (pk) { c(x.p)[pk]++; if (x.p2) c(x.p2)[pk]++; }
       // set assists only (a teammate's set, never one that went over): dig assists don't count in set efficiency
       const a = assistIndex(ts, i, sameTeam);
       if (a >= 0 && ts[a].k === 'set') c(ts[a].p).assists++;
@@ -106,7 +107,8 @@ function gameCounts(g: Game): Record<string, Counts> {
       if (t.k === 'block' && prev?.k === 'attack' && prev.p !== t.p) c(prev.p).blocked++;
     } else {
       const f = forcedBy(ts, r.end, sameTeam);
-      const w = f >= 0 && (t.k === 'receive' || t.k === 'dig') ? FORCED_ERROR_WEIGHT : 1;
+      // a blockout isn't the blocker's error (it stays a block touch); a forced receive / dig error counts half
+      const w = isBlockout(ts, r.end, sameTeam) ? 0 : f >= 0 && (t.k === 'receive' || t.k === 'dig') ? FORCED_ERROR_WEIGHT : 1;
       c(t.p).errors += w;
       const ek = ERR[t.k]; if (ek) c(t.p)[ek] += w;
       if (f >= 0) credit(f);

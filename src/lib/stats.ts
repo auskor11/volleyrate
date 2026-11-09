@@ -1,4 +1,4 @@
-import { DEFAULT_SET_GRADE, assistIndex, forcedBy, isGuest, type Game, type Rally, type SameTeam, type Skill, type Touch } from './games';
+import { DEFAULT_SET_GRADE, assistIndex, forcedBy, isBlockout, isGuest, type Game, type Rally, type SameTeam, type Skill, type Touch } from './games';
 import { gameSetup, teamOf } from './rotation';
 
 /** Teams from a game's court setup, to keep assists within a team (unknown players count as teammates). */
@@ -101,24 +101,29 @@ function addTouches(r: Rally, clip: (t: number) => Clip, add: Add, sameTeam?: Sa
   const ts = r.touches!;
   if (!r.end) return;  // a rally counts once its result is tagged (a serve confirmed in review isn't stats yet)
   const erred = r.end.r === 'error' ? r.end.i : -1;
-  ts.forEach((t, j) => { add(t.p, ATTEMPT[t.k], clip(t.t)); detail(t, !!r.end && j !== erred).forEach(k => add(t.p, k, clip(t.t))); });
+  ts.forEach((t, j) => {
+    add(t.p, ATTEMPT[t.k], clip(t.t)); detail(t, !!r.end && j !== erred).forEach(k => add(t.p, k, clip(t.t)));
+    if (t.p2) add(t.p2, 'block', clip(t.t));  // second blocker
+  });
   const kill = (x: Touch) => { if (x.k === 'attack' && x.a) add(x.p, TYPE_KILL[x.a], clip(x.t)); };
   const t = ts[r.end.i], prev = ts[r.end.i - 1];
   if (!t) return;
   if (r.end.r === 'point') {
     add(t.p, POINT[t.k], clip(t.t));
+    if (t.p2) add(t.p2, POINT[t.k], clip(t.t));
     kill(t);
     // assist: the set (or a teammate's dig) just before the kill; never the attacker themselves
     const a = assistIndex(ts, r.end.i, sameTeam);
     if (a >= 0) add(ts[a].p, 'assist', clip(ts[a].t));
     if (t.k === 'block' && prev?.k === 'attack' && prev.p !== t.p) add(prev.p, 'blocked', clip(prev.t));
   } else {
-    add(t.p, ERROR[t.k] ?? 'oerr', clip(t.t));
+    if (!isBlockout(ts, r.end, sameTeam)) add(t.p, ERROR[t.k] ?? 'oerr', clip(t.t));  // a blockout isn't the blocker's error
     // the serve / attack / block that forced this error also scored
     const f = forcedBy(ts, r.end, sameTeam);
     if (f >= 0) {
       const by = ts[f];
       add(by.p, POINT[by.k], clip(by.t));
+      if (by.p2) add(by.p2, POINT[by.k], clip(by.t));
       kill(by);
       const a = assistIndex(ts, f, sameTeam);
       if (a >= 0) add(ts[a].p, 'assist', clip(ts[a].t));

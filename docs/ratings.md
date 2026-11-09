@@ -115,6 +115,8 @@ A rally counts only if it is not marked "Not a rally", has touches tagged, and h
   - After an attack, a receive / dig / block error is always forced. Any other error (a set, a free ball, …) is forced only when the court setup puts the attacker and the player who erred on different teams.
   - A forced **receive or dig** error counts **0.5** against the defender's Receiving and Consistency (`FORCED_ERROR_WEIGHT`). Other forced errors (block, set, …) count in full.
 
+- **Double blocks:** a block touch can name a second blocker. Both players get the block touch, and both get the block point if it scores (directly or by forcing an error). An attacker who is blocked by two players counts as blocked once.
+- **Blockouts:** when a block straight after the other team's attack goes out (or is tagged as a block error), the attacker gets the kill, and the blocker is **not** marked down: it counts as a block touch (+0.5 block credit), not an error, for ratings, stats and game ratings. Tagging it as "the attack scored" gives exactly the same result.
 - A player is never credited for their own touch: no assist for setting yourself, and no "blocked" for blocking your own attack.
 - Guests are left out of both ratings and the benchmark. Their touches still affect credit: for example, a guest's serve still makes the next receive error count as forced (0.5).
 - **Free ball** (an easy ball sent over) counts as a touch, so it counts for Consistency, and an error on it counts as an error. It is **not an attack**, so it doesn't affect hitting efficiency, and it can't force an error.
