@@ -52,7 +52,7 @@ export const LEADER_STATS: { k: StatKey; label: string }[] = [
   { k: 'kill', label: 'Kills' }, { k: 'ace', label: 'Aces' }, { k: 'blockpt', label: 'Block points' }, { k: 'assist', label: 'Assists' },
 ];
 
-export interface Clip { gameId: string; title: string; date: string; s: number; e: number; t: number }
+export interface Clip { gameId: string; title: string; date: string; s: number; e: number; t: number; w?: number }  // w: counts this much (an error ending a scramble after an attack: 0.5)
 export type PlayerStats = Record<StatKey, Clip[]>;
 
 const empty = (): PlayerStats =>
@@ -117,9 +117,10 @@ function addTouches(r: Rally, clip: (t: number) => Clip, add: Add, sameTeam?: Sa
     if (a >= 0) add(ts[a].p, 'assist', clip(ts[a].t));
     if (t.k === 'block' && prev?.k === 'attack' && prev.p !== t.p) add(prev.p, 'blocked', clip(prev.t));
   } else {
-    if (!isBlockout(ts, r.end, sameTeam)) add(t.p, ERROR[t.k] ?? 'oerr', clip(t.t));  // a blockout isn't the blocker's error
     // the serve / attack / block that forced this error also scored
     const f = forcedBy(ts, r.end, sameTeam);
+    // a blockout isn't the blocker's error; the error ending a scramble after an attack counts half
+    if (!isBlockout(ts, r.end, sameTeam)) add(t.p, ERROR[t.k] ?? 'oerr', { ...clip(t.t), ...(f >= 0 && f < r.end.i - 1 ? { w: 0.5 } : {}) });
     if (f >= 0) {
       const by = ts[f];
       add(by.p, POINT[by.k], clip(by.t));

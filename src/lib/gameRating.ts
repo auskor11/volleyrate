@@ -47,11 +47,12 @@ export function matchRatings(game: Game): MatchResult | null {
   const court = setup ? startCourt(setup) : null;
   const tagged = Math.max(1, live.filter(r => r.touches?.length && r.end).length);
   const n = (s: PlayerStats, k: StatKey) => s[k]?.length ?? 0;
+  const weighted = (s: PlayerStats, k: StatKey) => (s[k] ?? []).reduce((t, c) => t + (c.w ?? 1), 0);  // half-counted errors
 
   const rows: MatchRow[] = ids.map(id => {
     const s = stats[id];
     const plus = Object.entries(GAME_RATING.plus).reduce((t, [k, w]) => t + w * n(s, k as StatKey), 0);
-    const minus = Object.entries(GAME_RATING.minus).reduce((t, [k, w]) => t + w * n(s, k as StatKey), 0);
+    const minus = Object.entries(GAME_RATING.minus).reduce((t, [k, w]) => t + w * weighted(s, k as StatKey), 0);
     const net = plus - minus;
     const team = court ? teamOf(court, id) : null;
     const raw = GAME_RATING.base + GAME_RATING.perPoint * net * (50 / tagged) + (winner && team === winner ? GAME_RATING.winBonus : 0);

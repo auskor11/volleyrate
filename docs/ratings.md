@@ -196,7 +196,7 @@ ratings above.
 
 - **Net points** from that game's tags:
   - plus: kill, ace, block point and set-over point 1 each; assist 0.6; dig 0.25; receive 0.15; block touch 0.15; free ball 0.1
-  - minus: attack, serve, receive/dig and other errors 1 each; getting blocked 0.5
+  - minus: attack, serve, receive/dig and other errors 1 each (the error ending a scramble after an attack 0.5); getting blocked 0.5
 - **Score** = 6 + 0.5 × net points × (50 ÷ tagged rallies in the game), +0.5 for the winning team, kept between 0 and 10
   (one decimal). The winner is the team with more points in the game's score sheet (needs the team setup).
 - **MVP** (👑) is the best score on the winning team; **MVP** on the losing team is that team's best.
