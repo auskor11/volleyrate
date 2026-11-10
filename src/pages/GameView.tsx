@@ -874,7 +874,8 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
       const { tag: _t, end: _e, touches: _ts, ...rest } = r;
       return { ...rest, touches, ...(end && end.i < touches.length ? { end } : {}) };
     });
-    const res = rallyResult(updated.find(r => r.s === r0.s)!, sameTeamIn(game));
+    const r1 = updated.find(r => r.s === r0.s)!;
+    const res = rallyResult(r1, sameTeamIn({ ...game, rallies: updated }, r1));
     const who = (pid: string) => isGuest(pid) ? guestName(pid) : players?.find(p => p.id === pid)?.name ?? pid;
     const chain = touches.map(t => `${who(t.p)}${t.p2 ? ` + ${who(t.p2)}` : ''} ${SKILLS[t.k].toLowerCase()}`).join(' → ');
     commit(updated, r0.s, [`tag:${r0.as ?? r0.s}`, !touches.length ? `${label(r0)}: cleared tags`
@@ -991,7 +992,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
             {mode === 'review' && attention.has(r) && <span className="rounded-full bg-ball/20 px-2 py-0.5 text-xs text-ball" title={attention.get(r)!.join(' · ')}>⚠ {attention.get(r)!.join(' · ')}</span>}
             {mode === 'review' && <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS[r.st].cls}`}>{STATUS[r.st].label}</span>}
             {mode !== 'review' && (() => {
-              const res = rallyResult(r, sameTeamIn(game));
+              const res = rallyResult(r, sameTeamIn(game, r));
               if (res) return (
                 <span className={`truncate rounded-full px-2 py-0.5 text-xs ${res.good ? 'bg-good/20 text-good' : 'bg-bad/20 text-bad'}`}>
                   {res.label} · {name(res.who)}{res.who2 && <> + {name(res.who2)}</>}{res.assist && <span className="opacity-70"> (assist {name(res.assist)})</span>}{res.note && <span className="opacity-70"> ({name(res.noteWho)}{res.noteWho2 && <> + {name(res.noteWho2)}</>} {res.note})</span>}
@@ -1240,7 +1241,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
             wonBy={view && rally ? rallyWinner(view.state, rally) : null}
             needTeams={!teamsReady}
             onTeams={openTeams}
-            sameTeam={sameTeamIn(game)}
+            sameTeam={rally ? sameTeamIn(game, rally) : sameTeamIn(game)}
             onPrev={() => go(cur - 1)} onNext={() => go(cur + 1)} hasPrev={cur > 0} hasNext={cur < list.length - 1} />
         )}
 

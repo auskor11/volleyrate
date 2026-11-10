@@ -335,6 +335,20 @@ export function scoreSheet(setup: CourtSetup, rallies: Rally[]): ScoreRow[] {
   });
 }
 
+/** The court each rally was played on (live rallies in time order; bad ones are skipped), in one pass. */
+export function courtsFor(setup: CourtSetup, rallies: Rally[]): Map<Rally, CourtState> {
+  let state = startCourt(setup);
+  const out = new Map<Rally, CourtState>();
+  for (const r of rallies) {
+    if (r.st === 'bad') continue;
+    const h = handSet(r);
+    const cur = h ? withDetails(h, state) : state;
+    out.set(r, cur);
+    state = advance(cur, r).next;
+  }
+  return out;
+}
+
 export const courtOnly = (c: CourtState): CourtState => ({ a: normSide(c.a), b: normSide(c.b), serving: c.serving });
 export const sameCourt = (x: CourtState, y: CourtState) => JSON.stringify(courtOnly(x)) === JSON.stringify(courtOnly(y));
 

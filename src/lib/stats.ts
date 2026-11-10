@@ -1,11 +1,20 @@
 import { DEFAULT_SET_GRADE, afterPoorTouch, assistIndex, forcedBy, isBlockout, isGuest, isShared, type Game, type Rally, type SameTeam, type Skill, type Touch } from './games';
-import { gameSetup, teamOf } from './rotation';
+import { courtsFor, gameSetup, teamOf, type CourtState } from './rotation';
 
 /** Teams from a game's court setup, to keep assists within a team (unknown players count as teammates). */
-export function sameTeamIn(g: Game): SameTeam | undefined {
+const courtCache = new WeakMap<Rally[], Map<Rally, CourtState> | null>();
+/**
+ * Who's on which side for this rally: the court it was played on, so a player who switched teams mid-game
+ * (a court changed by hand on a rally) counts with their new team from then on. A rally not in the game
+ * falls back to the starting setup.
+ */
+export function sameTeamIn(g: Game, r?: Rally): SameTeam | undefined {
   const setup = gameSetup(g);
   if (!setup) return undefined;
-  return (a, b) => { const ta = teamOf(setup, a), tb = teamOf(setup, b); return !(ta && tb && ta !== tb); };
+  let courts = courtCache.get(g.rallies);
+  if (courts === undefined) { courts = courtsFor(setup, g.rallies); courtCache.set(g.rallies, courts); }
+  const c: CourtState = (r && courts?.get(r)) || setup;
+  return (a, b) => { const ta = teamOf(c, a), tb = teamOf(c, b); return !(ta && tb && ta !== tb); };
 }
 
 export type StatKey =
@@ -84,9 +93,9 @@ export function computeStats(games: Game[]): Record<string, PlayerStats> {
     (out[pid] ??= empty())[k].push(c);
   };
   for (const g of games) {
-    const sameTeam = sameTeamIn(g);
     for (const r of g.rallies) {
       if (r.st === 'bad') continue;
+      const sameTeam = sameTeamIn(g, r);
       const clip = (t: number): Clip => ({ gameId: g.id, title: g.title, date: g.date, s: r.s, e: r.e, t });
       if (r.touches?.length) addTouches(r, clip, add, sameTeam);
       else if (r.tag) addPointTag(r, clip(r.s), add);

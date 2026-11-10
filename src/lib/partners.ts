@@ -13,10 +13,9 @@ export interface Partners {
 export function partners(games: Game[]): Partners {
   const out: Partners = { assists: {}, together: {}, against: {} };
   for (const g of games) {
-    const same = sameTeamIn(g);
     for (const r of g.rallies) {
       if (r.st === 'bad') continue;
-      const res = rallyResult(r, same);
+      const res = rallyResult(r, sameTeamIn(g, r));
       if (res?.good && res.label === 'Kill' && res.assist && !isGuest(res.assist) && !isGuest(res.who)) {
         const a = (out.assists[res.assist] ??= {});
         a[res.who] = (a[res.who] ?? 0) + 1;

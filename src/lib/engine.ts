@@ -74,12 +74,12 @@ const zero = (): Counts => ({
 function gameCounts(g: Game): Record<string, Counts> {
   const out: Record<string, Counts> = {};
   const c = (p: string) => (out[p] ??= zero());
-  const sameTeam = sameTeamIn(g);
   const ATT: Partial<Record<Skill, keyof Counts>> = { attack: 'attacks', serve: 'serves', set: 'sets', block: 'blocks', receive: 'ctrl', dig: 'ctrl' };
   const ERR: Partial<Record<Skill, keyof Counts>> = { attack: 'aerr', serve: 'serr', set: 'setErr', block: 'blockErr', receive: 'ctrlErr', dig: 'ctrlErr' };
   const PT: Partial<Record<Skill, keyof Counts>> = { attack: 'kills', serve: 'aces', block: 'blockPts', set: 'setPts' };
   for (const r of g.rallies) {
     if (r.st === 'bad' || !r.touches?.length || !r.end) continue;
+    const sameTeam = sameTeamIn(g, r);  // the court this rally was played on (players can switch teams mid-game)
     const ts = r.touches;
     const erred = r.end.r === 'error' ? r.end.i : -1;
     ts.forEach((t, j) => {

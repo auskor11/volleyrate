@@ -75,9 +75,8 @@ export function Session() {
   const rallies = dayGames.reduce((n, g) => n + g.rallies.filter(r => r.st !== 'bad').length, 0);
   // "All": every rally won by a kill, ace, block or set over, once each (a kill's assist is in its label)
   const compilation = dayGames.flatMap(g => {
-    const same = sameTeamIn(g);
     return g.rallies.filter(r => r.st !== 'bad').sort((a, b) => a.s - b.s).flatMap(r => {
-      const res = rallyResult(r, same);
+      const res = rallyResult(r, sameTeamIn(g, r));
       if (!res?.good || !['Kill', 'Ace', 'Block', 'Set over'].includes(res.label) || isGuest(res.who)) return [];
       return [{ key: `${g.id}|${r.s}`, youtubeId: g.youtubeId, cams: reelCams(g), s: r.s, e: r.e,
         label: `${res.label} · ${name(res.who)}${res.who2 && !isGuest(res.who2) ? ` + ${name(res.who2)}` : ''}${res.assist && !isGuest(res.assist) ? ` (assist ${name(res.assist)})` : ''}`, sub: g.title }];

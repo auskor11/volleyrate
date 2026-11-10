@@ -70,11 +70,10 @@ export function matchRatings(game: Game): MatchResult | null {
     const top = [...rows].sort((a, b) => n(b.stats, k) - n(a.stats, k));
     if (top[0] && n(top[0].stats, k) >= 2 && n(top[0].stats, k) > n(top[1]?.stats ?? ({} as PlayerStats), k)) top[0].titles.push(title);
   }
-  const same = sameTeamIn(game);
   let streakWho = '', streak = 0;
   const streaks: Record<string, number> = {};
   for (const r of live) {
-    const res = rallyResult(r, same);
+    const res = rallyResult(r, sameTeamIn(game, r));
     const who = res?.good ? res.who : '';
     streak = who && who === streakWho ? streak + 1 : who ? 1 : 0;
     streakWho = who;
