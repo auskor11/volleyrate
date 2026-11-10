@@ -863,8 +863,20 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
     const c = g ? guestServes(base, g) : makeServer(base, p);
     good(p, sameCourt(c, view.state) ? undefined : c, won);
   };
-  const setStart = () => { const t = now(); if (rally && t < rally.e) edit({ s: t, st: rally.st === 'auto' ? 'ok' : rally.st }, `start: changed start to ${fmtTime(t)}`); };
-  const setEnd = () => { const t = now(); if (rally && t > rally.s) edit({ e: t, st: rally.st === 'auto' ? 'ok' : rally.st }, `end: changed end to ${fmtTime(t)}`); };
+  // moving a start / end over other rallies (the detector split one rally in two): they become part of this one
+  const resize = (patch: { s: number } | { e: number }, note: string) => {
+    if (!rally) return;
+    const s = 's' in patch ? patch.s : rally.s, e = 'e' in patch ? patch.e : rally.e;
+    const inside = rallies.filter(r => r !== rally && r.s >= s && r.s < e);
+    const tagged = inside.filter(r => r.touches?.length || r.tag);
+    if (tagged.length && !confirm(`This also takes in ${inside.length === 1 ? 'the rally' : `${inside.length} rallies`} at ${inside.map(r => fmtTime(r.s)).join(', ')} (now part of this one). ${tagged.length === 1 && inside.length === 1 ? 'It has' : `${tagged.length} of them have`} tags that will be removed. Carry on?`)) return;
+    const merged = { ...rally, ...patch, st: rally.st === 'auto' ? 'ok' as const : rally.st };
+    const more = inside.length ? ` · merged in the rally${inside.length > 1 ? 's' : ''} at ${inside.map(r => fmtTime(r.s)).join(', ')}` : '';
+    commit(rallies.filter(r => !inside.includes(r)).map(r => r === rally ? merged : r), s,
+      [`rev:${rally.as ?? rally.s}:${note.split(':')[0]}`, `${label(rally)}: ${note}${more}`]);
+  };
+  const setStart = () => { const t = now(); if (rally && t < rally.e) resize({ s: t }, `start: changed start to ${fmtTime(t)}`); };
+  const setEnd = () => { const t = now(); if (rally && t > rally.s) resize({ e: t }, `end: changed end to ${fmtTime(t)}`); };
   const add = () => { const s = now(); commit([...rallies, { s, e: s + 6, st: 'added' }], s, [`add:${s}`, `Added a rally at ${fmtTime(s)}`]); };
   const setTouches = (touches: Touch[], end?: RallyEnd) => {
     if (!rally) return;
@@ -1206,7 +1218,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
               </button>
             )}
             <p className="hidden text-xs text-muted lg:block">
-              Pause at the right moment and tap Start ⇤ / ⇥ End to fix a clip; + Add creates a missed rally at the current time.
+              Pause at the right moment and tap Start ⇤ / ⇥ End to fix a clip (a rally it runs over becomes part of this one); + Add creates a missed rally at the current time.
               Keys: Y good · X not a rally · [ start · ] end · A add · ←/→ rally · , / . ∓5s.
             </p>
           </div>
