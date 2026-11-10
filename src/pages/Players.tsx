@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import { PhotoEditor } from '../components/Avatar';
-import { removeHighlight, useHighlights, type Highlight } from '../lib/highlights';
+import { MARK, isLow, removeHighlight, useHighlights, type Highlight } from '../lib/highlights';
 import { reelCams } from '../lib/cameras';
 import { ClipReel } from '../components/ClipReel';
 import { RatingChart } from '../components/RatingChart';
@@ -120,6 +120,7 @@ export function PlayerDetail() {
       <PartnersSection playerId={p.id} />
       <MilestonesSection playerId={p.id} />
       {!isGuest && <Highlights playerId={p.id} name={p.name} />}
+      {!isGuest && <Highlights playerId={p.id} name={p.name} low />}
 
 
       {CATEGORIES.filter(c => c.attrs.length > 1).map(c => {
@@ -334,11 +335,11 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
   const games = useGames();
   const { players } = usePlayers();
   const [open, setOpen] = useState<StatKey | null>(null);
-  const [star, setStar] = useState<{ gameId: string; s: number; e: number } | null>(null);  // saving a highlight
+  const [star, setStar] = useState<{ gameId: string; s: number; e: number; low?: boolean } | null>(null);  // saving a highlight / lowlight
   const allHighlights = useHighlights({ all: true });
   // who a rally is already a highlight for (same game, same rally start), to mark it ★
-  const starredFor = (gameId: string, s: number) => [...new Set((allHighlights ?? [])
-    .filter(h => h.gameId === gameId && Math.abs(h.s - s) < 1)
+  const starredFor = (gameId: string, s: number, low = false) => [...new Set((allHighlights ?? [])
+    .filter(h => h.gameId === gameId && Math.abs(h.s - s) < 1 && isLow(h) === low)
     .map(h => players?.find(p => p.id === h.playerId)?.name ?? h.playerId))].join(', ');
   if (!games) return null;
   const n = taggedGames(games);
@@ -404,6 +405,10 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
                   <span className="text-xs text-muted">{c.label}</span>
                   {c.star && <span className="rounded-md bg-ball/20 px-2 py-0.5 text-xs font-semibold text-ball">★ Highlight for {c.star}</span>}
                   {canStar && <button onClick={() => setStar({ gameId, s, e: c.e })} className="rounded-md border border-ball/50 px-2 py-0.5 text-xs font-semibold text-ball">{c.star ? '★ Add for someone else' : '★ Highlight'}</button>}
+                  {(() => { const lo = starredFor(gameId, s, true); return <>
+                    {lo && <span className="rounded-md bg-raised px-2 py-0.5 text-xs font-semibold text-muted">🙈 Lowlight for {lo}</span>}
+                    {canStar && <button onClick={() => setStar({ gameId, s, e: c.e, low: true })} className="rounded-md border border-line px-2 py-0.5 text-xs font-semibold text-muted">{lo ? '🙈 Add for someone else' : '🙈 Lowlight'}</button>}
+                  </>; })()}
                   <ShareRally gameId={gameId} rally={{ s }} title={`${g.title} · rally at ${fmtTime(s)}`} />
                 </>;
               }} clips={[...st[open]]
@@ -424,7 +429,7 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
       )}
       {star && games && (() => {
         const g = games.find(x => x.id === star.gameId);
-        return g && <HighlightDialog game={g} rally={star} players={players ?? []} forPlayer={playerId} onClose={() => setStar(null)} />;
+        return g && <HighlightDialog game={g} rally={star} players={players ?? []} forPlayer={playerId} low={star.low} onClose={() => setStar(null)} />;
       })()}
     </section>
   );
@@ -462,10 +467,11 @@ function Attr({ k, label, p, model }: { k: string; label: string; p: { id: strin
   );
 }
 
-/** A player's bookmarked rallies, playable one by one or as a reel (whole rallies). */
-export function Highlights({ playerId, name, sample }: { playerId: string; name: string; sample?: Highlight[] }) {
+/** A player's bookmarked rallies (highlights, or lowlights with `low`), playable one by one or as a reel (whole rallies). */
+export function Highlights({ playerId, name, sample, low = false }: { playerId: string; name: string; sample?: Highlight[]; low?: boolean }) {
   const saved = useHighlights({ playerId });
-  const list = sample ?? saved;  // sample: dev preview only
+  const list = (sample ?? saved)?.filter(h => isLow(h) === low);  // sample: dev preview only
+  const m = MARK[low ? 'low' : 'high'];
   const games = useGames();
   const auth = useAuth();
   const me = auth?.user?.email?.toLowerCase();
@@ -473,13 +479,13 @@ export function Highlights({ playerId, name, sample }: { playerId: string; name:
   if (!list) return null;
   if (!list.length) return (
     <section className="rounded-xl border border-dashed border-line p-4 text-sm text-muted">
-      <b className="text-ink">★ Highlights</b>: none yet. On any game, select a rally and tap ★ Highlight to save it here.
+      <b className="text-ink">{m.icon} {m.many}</b>: none yet. On any game, select a rally and tap {m.icon} {m.one} to save it here.{low && ' Bloopers, or moments to learn from.'}
     </section>
   );
   const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
   return (
     <section className="rounded-xl border border-line bg-surface p-4">
-      <h2 className="mb-2 font-display text-lg font-semibold">★ Highlights <span className="text-sm font-normal text-muted">({list.length})</span></h2>
+      <h2 className="mb-2 font-display text-lg font-semibold">{m.icon} {m.many} <span className="text-sm font-normal text-muted">({list.length})</span></h2>
       <ClipReel nowPlaying={c => {
         const h = list.find(x => x.id === c.key);
         return h && <ShareRally gameId={h.gameId} rally={h} title={`${h.title} · ${h.note || `rally at ${fmtTime(h.s)}`}`} />;
@@ -490,8 +496,8 @@ export function Highlights({ playerId, name, sample }: { playerId: string; name:
         extra: <>
           <Link to={`/games/${h.gameId}?t=${h.s}&r=${h.s}`} className="shrink-0 text-xs text-muted underline">in game</Link>
           {canRemove(h) && (
-            <button className="shrink-0 text-xs text-muted" title="Remove highlight"
-              onClick={() => { if (confirm(`Remove this highlight from ${name}'s profile?`)) removeHighlight(h.id); }}>✕</button>
+            <button className="shrink-0 text-xs text-muted" title={`Remove ${m.one.toLowerCase()}`}
+              onClick={() => { if (confirm(`Remove this ${m.one.toLowerCase()} from ${name}'s profile?`)) removeHighlight(h.id); }}>✕</button>
           )}
         </>,
       }))} />

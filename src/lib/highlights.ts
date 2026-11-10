@@ -1,4 +1,5 @@
-// Highlights: whole rallies bookmarked to a player's profile (highlights/{id}).
+// Highlights and lowlights: whole rallies bookmarked to a player's profile (highlights/{id}; kind 'low' = a lowlight,
+// a blooper or a moment to learn from).
 import { useEffect, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, where } from 'firebase/firestore';
 import { db } from './firebase';
@@ -16,7 +17,11 @@ export interface Highlight {
   by: string;         // email of whoever added it
   byName: string;
   at?: { toDate(): Date };
+  kind?: 'low';       // a lowlight (missing: a highlight)
 }
+
+export const isLow = (h: Pick<Highlight, 'kind'>) => h.kind === 'low';
+export const MARK = { high: { icon: '★', one: 'Highlight', many: 'Highlights' }, low: { icon: '🙈', one: 'Lowlight', many: 'Lowlights' } } as const;
 
 export async function addHighlight(h: Omit<Highlight, 'id' | 'at'>) {
   await addDoc(collection(db, 'highlights'), { ...h, at: serverTimestamp() });

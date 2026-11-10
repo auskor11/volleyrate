@@ -246,9 +246,9 @@ function ago(d: Date): string {
 }
 
 const ROLES: { k: Member['role']; label: string; what: string }[] = [
-  { k: 'viewer', label: 'Viewer', what: 'like a guest, but signed in (also sees highlights); changes nothing' },
+  { k: 'viewer', label: 'Viewer', what: 'like a guest, but signed in (also sees highlights and lowlights); changes nothing' },
   { k: 'editor', label: 'Editor', what: 'a viewer who also reviews rallies and tags games' },
-  { k: 'player', label: 'Player', what: 'everything except admin settings (adds games, highlights, photos)' },
+  { k: 'player', label: 'Player', what: 'everything except admin settings (adds games, highlights / lowlights, photos)' },
   { k: 'admin', label: 'Admin', what: 'everything, including ratings and access' },
 ];
 

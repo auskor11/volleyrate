@@ -18,7 +18,7 @@ import { useEngineSettings } from '../lib/rated';
 import { createBackup } from '../lib/backups';
 import { CATEGORIES, overall } from '../lib/ratings';
 import { canShare, logHistory, setGameRating, useGames, useHistory } from '../lib/games';
-import { useHighlights } from '../lib/highlights';
+import { isLow, useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
 import {
   BACK_COURT_PLAYERS, otherPairServer, withServing, ROLE_NAMES, TEAMS, assignMiddles, courtFor, guestServes, likelyLibero, sameCourt, courtOnly, emptySide, gameSetup, makeServer, rallyWinner, rolesAt, rotationOf,
@@ -659,13 +659,14 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
   const clip = useRef(false);
   const [ready, setReady] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [highlighting, setHighlighting] = useState(false);
+  const [highlighting, setHighlighting] = useState<null | 'high' | 'low'>(null);
   const [teamsOpen, setTeamsOpen] = useState(false);
   const openTeams = () => { player.current?.pauseVideo(); setTeamsOpen(true); };  // the setup has its own video
   const [teamsFrom, setTeamsFrom] = useState(false);  // re-entering the teams at the selected rally
   const openTeamsFrom = () => { player.current?.pauseVideo(); setTeamsFrom(true); };
   const gameHighlights = useHighlights({ gameId: game.id });
-  const starred = (r: Rally) => (gameHighlights ?? []).filter(h => Math.abs(h.s - r.s) < 1);
+  const marked = (r: Rally, low: boolean) => (gameHighlights ?? []).filter(h => Math.abs(h.s - r.s) < 1 && isLow(h) === low);
+  const starred = (r: Rally) => marked(r, false);
   const [step, setStep] = useState(false);  // pause at suggested touch moments while tagging (off until suggestions improve)
   const [clock, setClock] = useState(0);
 
@@ -1013,6 +1014,9 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
               {starred(r).length > 0 && (
                 <span className="ml-1 text-xs text-ball" title={`Highlight for ${starred(r).map(h => players?.find(p => p.id === h.playerId)?.name ?? h.playerId).join(', ')}`}>★</span>
               )}
+              {marked(r, true).length > 0 && (
+                <span className="ml-1 text-xs" title={`Lowlight for ${marked(r, true).map(h => players?.find(p => p.id === h.playerId)?.name ?? h.playerId).join(', ')}`}>🙈</span>
+              )}
             </span>
             {mode === 'review' && attention.has(r) && <span className="rounded-full bg-ball/20 px-2 py-0.5 text-xs text-ball" title={attention.get(r)!.join(' · ')}>⚠ {attention.get(r)!.join(' · ')}</span>}
             {mode === 'review' && <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS[r.st].cls}`}>{STATUS[r.st].label}</span>}
@@ -1084,7 +1088,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
           video={{ youtubeId: cam.youtubeId, offset: cam.offset, start: rally.s, name: cameraLabel(cam) }}
           fromRally={{ label: `rally ${liveRallies.indexOf(rally) + 1}`, state: view.state, onSave: c => setCourt(c, 're-entered the teams from this rally') }} />}
         {highlighting && rally && (
-          <HighlightDialog game={game} rally={rally} players={players ?? []} onClose={() => setHighlighting(false)} />
+          <HighlightDialog game={game} rally={rally} players={players ?? []} low={highlighting === 'low'} onClose={() => setHighlighting(null)} />
         )}
 
         {addingCam && <AddCamera game={game} onClose={() => setAddingCam(false)} />}
@@ -1125,7 +1129,8 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
         <div className="flex items-center justify-between text-sm">
           <span className="flex items-center gap-2 font-medium">
             {rally ? <>Rally {cur + 1} · {fmtTime(rally.s)}–{fmtTime(rally.e)}
-              {canStar && <button onClick={() => setHighlighting(true)} className="rounded-md border border-ball/50 px-2 py-0.5 text-xs font-semibold text-ball">★ Highlight</button>}
+              {canStar && <button onClick={() => setHighlighting('high')} className="rounded-md border border-ball/50 px-2 py-0.5 text-xs font-semibold text-ball">★ Highlight</button>}
+              {canStar && <button onClick={() => setHighlighting('low')} className="rounded-md border border-line px-2 py-0.5 text-xs font-semibold text-muted">🙈 Lowlight</button>}
               <ShareRally gameId={game.id} rally={rally} title={`${game.title} · rally ${cur + 1}`} />
             </> : <span className="text-muted">Tap a rally to play it</span>}
           </span>
