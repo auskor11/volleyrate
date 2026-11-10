@@ -72,6 +72,15 @@ export const canShare = (k: Skill) => k !== 'serve' && k !== 'block';
 export const isBlockout = (ts: Touch[], end: RallyEnd, sameTeam?: SameTeam) =>
   end.r === 'error' && ts[end.i]?.k === 'block' && ts[end.i - 1]?.k === 'attack' && forcedBy(ts, end, sameTeam) === end.i - 1;
 
+/** An error straight after a teammate's touch graded Poor (a bad receive, dig or set they had to play): it counts
+ *  half, like a forced error. Not when that touch went over and scored (a set over). */
+export function afterPoorTouch(ts: Touch[], end: RallyEnd, sameTeam?: SameTeam): boolean {
+  if (end.r !== 'error' || end.i < 1) return false;
+  const t = ts[end.i], prev = ts[end.i - 1];
+  return !!t && !!prev && prev.q === 1 && (prev.k === 'receive' || prev.k === 'dig' || prev.k === 'set') && prev.p !== t.p
+    && (sameTeam?.(prev.p, t.p) ?? true) && forcedBy(ts, end, sameTeam) !== end.i - 1;
+}
+
 /** Guests are tagged by team so the app knows their side (older tags just say 'guest'). */
 export const isGuest = (p?: string) => !!p && (p === 'guest' || p.startsWith('guest-'));
 export const guestTeam = (p: string): 'a' | 'b' | null => (p === 'guest-a' ? 'a' : p === 'guest-b' ? 'b' : null);

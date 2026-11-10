@@ -1,4 +1,4 @@
-import { DEFAULT_SET_GRADE, assistIndex, forcedBy, isBlockout, isGuest, isShared, type Game, type Rally, type SameTeam, type Skill, type Touch } from './games';
+import { DEFAULT_SET_GRADE, afterPoorTouch, assistIndex, forcedBy, isBlockout, isGuest, isShared, type Game, type Rally, type SameTeam, type Skill, type Touch } from './games';
 import { gameSetup, teamOf } from './rotation';
 
 /** Teams from a game's court setup, to keep assists within a team (unknown players count as teammates). */
@@ -122,8 +122,8 @@ function addTouches(r: Rally, clip: (t: number) => Clip, add: Add, sameTeam?: Sa
     // the serve / attack / block that forced this error also scored
     const f = forcedBy(ts, r.end, sameTeam);
     // a blockout isn't the blocker's error; a forced receive / dig error, or the error ending a scramble after an
-    // attack, counts half (as in the player ratings)
-    const half = f >= 0 && (t.k === 'receive' || t.k === 'dig' || f < r.end.i - 1);
+    // attack, or one straight after a teammate's poor receive / dig / set, counts half (as in the player ratings)
+    const half = (f >= 0 && (t.k === 'receive' || t.k === 'dig' || f < r.end.i - 1)) || afterPoorTouch(ts, r.end, sameTeam);
     // a miscommunication: the error is shared, half each
     const w = (half ? 0.5 : 1) * (isShared(t) ? 0.5 : 1);
     if (!isBlockout(ts, r.end, sameTeam))

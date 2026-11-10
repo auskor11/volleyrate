@@ -13,7 +13,7 @@
 // - Only rallies tagged touch-by-touch (with a result) count; quick point tags lack attempt counts.
 // - No caps beyond the 0–99 scale.
 import { sameTeamIn } from './stats';
-import { DEFAULT_SET_GRADE, assistIndex, forcedBy, gameWeight, isApplied, isBlockout, isGuest, isShared, type Game, type Skill } from './games';
+import { DEFAULT_SET_GRADE, afterPoorTouch, assistIndex, forcedBy, gameWeight, isApplied, isBlockout, isGuest, isShared, type Game, type Skill } from './games';
 import type { Player } from './data';
 import type { Ratings } from './ratings';
 
@@ -111,9 +111,11 @@ function gameCounts(g: Game): Record<string, Counts> {
     } else {
       const f = forcedBy(ts, r.end, sameTeam);
       // a blockout isn't the blocker's error (it stays a block touch); a forced receive / dig error counts half,
-      // and so does the error that ends a team's failed scramble after an attack (e.g. a hustle set off a bad dig)
+      // and so does the error that ends a team's failed scramble after an attack (e.g. a hustle set off a bad dig),
+      // or one straight after a teammate's poor receive / dig / set (not stacked: still half)
       const scramble = f >= 0 && f < r.end.i - 1;
-      const w = isBlockout(ts, r.end, sameTeam) ? 0 : f >= 0 && (t.k === 'receive' || t.k === 'dig' || scramble) ? FORCED_ERROR_WEIGHT : 1;
+      const w = isBlockout(ts, r.end, sameTeam) ? 0
+        : (f >= 0 && (t.k === 'receive' || t.k === 'dig' || scramble)) || afterPoorTouch(ts, r.end, sameTeam) ? FORCED_ERROR_WEIGHT : 1;
       // a miscommunication: the error is shared, half each
       const ek = ERR[t.k];
       for (const p of isShared(t) ? [t.p, t.p2!] : [t.p]) {
