@@ -51,7 +51,7 @@ export function matchRatings(game: Game): MatchResult | null {
 
   const rows: MatchRow[] = ids.map(id => {
     const s = stats[id];
-    const plus = Object.entries(GAME_RATING.plus).reduce((t, [k, w]) => t + w * n(s, k as StatKey), 0);
+    const plus = Object.entries(GAME_RATING.plus).reduce((t, [k, w]) => t + w * weighted(s, k as StatKey), 0);  // a shared receive counts half
     const minus = Object.entries(GAME_RATING.minus).reduce((t, [k, w]) => t + w * weighted(s, k as StatKey), 0);
     const net = plus - minus;
     const team = court ? teamOf(court, id) : null;

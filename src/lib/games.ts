@@ -57,8 +57,13 @@ export type Skill = keyof typeof SKILLS;
 // t = video time of the touch.
 // Optional detail: q = quality of a receive / dig / set (3 perfect or good, 2 OK, 1 poor);
 // a = attack type when it isn't a spike (missing = spike).
-// p2 = a second blocker on the same block (both get the block touch and any block point).
+// p2 = a second player: on a block, the second blocker (both get the block touch and any block point); on a
+// receive / dig that ended the rally as an error, a miscommunication (both left it or both went): the touch and
+// the error are shared, half each.
 export interface Touch { p: string; k: Skill; t: number; q?: Grade; a?: AttackType; p2?: string }
+
+/** A touch shared by two players who got in each other's way (not a double block): half each. */
+export const isShared = (t: Touch) => !!t.p2 && t.k !== 'block';
 
 /** A blockout or block error straight after the other team's attack: the attacker scores, but the blocker isn't
  *  marked down (getting a hand on the ball is good): it counts as a block touch, not an error. */
@@ -148,7 +153,7 @@ export function assistIndex(ts: Touch[], i: number, sameTeam?: SameTeam): number
 }
 
 /** Short description of how a rally ended, from touches or an older point tag. */
-export function rallyResult(r: Rally, sameTeam?: SameTeam): { label: string; good: boolean; who: string; who2?: string; note?: string; noteWho?: string; assist?: string } | null {
+export function rallyResult(r: Rally, sameTeam?: SameTeam): { label: string; good: boolean; who: string; who2?: string; note?: string; noteWho?: string; noteWho2?: string; assist?: string } | null {
   if (r.touches?.length && r.end) {
     const ts = r.touches;
     const t = ts[r.end.i];
@@ -159,10 +164,10 @@ export function rallyResult(r: Rally, sameTeam?: SameTeam): { label: string; goo
     const f = forcedBy(ts, r.end, sameTeam);
     if (f >= 0) {
       const by = ts[f];
-      return { label: POINT_LABEL[by.k]!, good: true, who: by.p, ...(by.p2 ? { who2: by.p2 } : {}), note: t.k === 'block' ? 'blockout' : `${SKILLS[t.k].toLowerCase()} error`, noteWho: t.p, assist: assistFor(f) };
+      return { label: POINT_LABEL[by.k]!, good: true, who: by.p, ...(by.p2 && by.k === 'block' ? { who2: by.p2 } : {}), note: t.k === 'block' ? 'blockout' : `${SKILLS[t.k].toLowerCase()} error`, noteWho: t.p, ...(isShared(t) ? { noteWho2: t.p2 } : {}), assist: assistFor(f) };
     }
     const label = point ? POINT_LABEL[t.k] ?? `${SKILLS[t.k]} point` : `${SKILLS[t.k]} error`;
-    return { label, good: point, who: t.p, ...(point && t.p2 ? { who2: t.p2 } : {}), assist: point ? assistFor(r.end.i) : undefined };
+    return { label, good: point, who: t.p, ...(t.p2 && (point ? t.k === 'block' : isShared(t)) ? { who2: t.p2 } : {}), assist: point ? assistFor(r.end.i) : undefined };
   }
   if (r.tag) return { label: OUTCOMES[r.tag.o].label, good: OUTCOMES[r.tag.o].good, who: r.tag.p, assist: r.tag.o === 'kill' ? r.tag.a : undefined };
   return null;

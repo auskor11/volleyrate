@@ -18,7 +18,7 @@ const SKILL_WORDS: Record<string, Skill> = {
 };
 const ATTACK_WORDS: Record<string, AttackType> = { tip: 'tip', tips: 'tip', tipped: 'tip', roll: 'roll', rolls: 'roll', placement: 'roll' };
 const POINT_WORDS: Record<string, Skill | undefined> = { point: undefined, points: undefined, scored: undefined, score: undefined, winner: undefined, kill: 'attack', kills: 'attack', ace: 'serve', aces: 'serve' };
-const ERROR_WORDS = new Set(['error', 'errors', 'out', 'net', 'fault', 'miss', 'missed', 'mistake']);
+const ERROR_WORDS = new Set(['error', 'errors', 'out', 'net', 'fault', 'miss', 'missed', 'mistake', 'miscommunication', 'miscom', 'miscomm', 'collision']);
 const GRADE_WORDS: Record<string, Grade> = { perfect: 3, great: 3, good: 3, okay: 2, ok: 2, decent: 2, poor: 1, bad: 1 };
 const UNDO_WORDS = new Set(['undo', 'scratch', 'delete', 'cancel']);
 const JOIN_WORDS = new Set(['and', 'plus', 'with', 'n']);
@@ -114,7 +114,7 @@ export function applyVoice(saved: Touch[], pre: Touch | null, ops: VoiceOp[], ti
   let list = pre ? [pre] : [...saved];
   let virtual = !!pre;  // the list is still just the unsaved prediction
   let n = 0;
-  for (const o of ops) {
+  for (const [idx, o] of ops.entries()) {
     if (o.op === 'undo') { if (!virtual && list.length) list = list.slice(0, -1); continue; }
     if (o.op === 'end') {
       if (!list.length) continue;
@@ -123,13 +123,16 @@ export function applyVoice(saved: Touch[], pre: Touch | null, ops: VoiceOp[], ti
     const prevT = list[list.length - 1]?.t ?? -Infinity;
     const t = Math.round(Math.max(times[n] ?? prevT, prevT + 0.1) * 10) / 10;
     const k = o.k ?? nextSkill(list);
-    const touch: Touch = { p: o.p, k, t, ...(o.a ? { a: o.a } : {}), ...(o.q ? { q: o.q } : {}), ...(o.p2 && k === 'block' ? { p2: o.p2 } : {}) };
+    // "Ben and Chris receive error": a miscommunication, the error shared half each
+    const next = ops[idx + 1];
+    const shared = !!o.p2 && (k === 'receive' || k === 'dig') && next?.op === 'end' && next.r === 'error';
+    const touch: Touch = { p: o.p, k, t, ...(o.a ? { a: o.a } : {}), ...(o.q ? { q: o.q } : {}), ...(o.p2 && (k === 'block' || shared) ? { p2: o.p2 } : {}) };
     // saying the serve replaces the prediction, like choosing Serve by hand
     list = virtual && k === 'serve' ? [touch] : [...list, touch];
     virtual = false;
     n++;
     // "Ben and Chris" that wasn't a block: two touches after all
-    if (o.p2 && k !== 'block') {
+    if (o.p2 && k !== 'block' && !shared) {
       const t2 = Math.round(Math.max(times[n] ?? t, t + 0.1) * 10) / 10;
       list = [...list, { p: o.p2, k: nextSkill(list), t: t2 }];
       n++;

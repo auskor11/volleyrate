@@ -13,7 +13,7 @@
 // - Only rallies tagged touch-by-touch (with a result) count; quick point tags lack attempt counts.
 // - No caps beyond the 0–99 scale.
 import { sameTeamIn } from './stats';
-import { DEFAULT_SET_GRADE, assistIndex, forcedBy, gameWeight, isApplied, isBlockout, isGuest, type Game, type Skill } from './games';
+import { DEFAULT_SET_GRADE, assistIndex, forcedBy, gameWeight, isApplied, isBlockout, isGuest, isShared, type Game, type Skill } from './games';
 import type { Player } from './data';
 import type { Ratings } from './ratings';
 
@@ -83,9 +83,12 @@ function gameCounts(g: Game): Record<string, Counts> {
     const ts = r.touches;
     const erred = r.end.r === 'error' ? r.end.i : -1;
     ts.forEach((t, j) => {
-      c(t.p).touches++;
-      const a = ATT[t.k]; if (a) c(t.p)[a]++;
-      if (t.p2) { c(t.p2).touches++; c(t.p2).blocks++; }  // a second blocker on the same block
+      // a miscommunication splits the touch between the two players; a second blocker gets a whole block touch
+      const share = isShared(t) ? 0.5 : 1;
+      c(t.p).touches += share;
+      const a = ATT[t.k]; if (a) c(t.p)[a] += share;
+      if (t.p2 && t.k === 'block') { c(t.p2).touches++; c(t.p2).blocks++; }
+      else if (t.p2) { c(t.p2).touches += share; if (a) c(t.p2)[a] += share; }
       // optional grades, on touches that weren't the rally-ending error (errors count elsewhere);
       // a set nobody graded counts as OK
       if (j !== erred) {
@@ -97,7 +100,7 @@ function gameCounts(g: Game): Record<string, Counts> {
     if (!t) continue;
     const credit = (i: number) => {  // point for touch i (+ assist / blocked bookkeeping)
       const x = ts[i];
-      const pk = PT[x.k]; if (pk) { c(x.p)[pk]++; if (x.p2) c(x.p2)[pk]++; }
+      const pk = PT[x.k]; if (pk) { c(x.p)[pk]++; if (x.p2 && x.k === 'block') c(x.p2)[pk]++; }
       // set assists only (a teammate's set, never one that went over): dig assists don't count in set efficiency
       const a = assistIndex(ts, i, sameTeam);
       if (a >= 0 && ts[a].k === 'set') c(ts[a].p).assists++;
@@ -111,8 +114,13 @@ function gameCounts(g: Game): Record<string, Counts> {
       // and so does the error that ends a team's failed scramble after an attack (e.g. a hustle set off a bad dig)
       const scramble = f >= 0 && f < r.end.i - 1;
       const w = isBlockout(ts, r.end, sameTeam) ? 0 : f >= 0 && (t.k === 'receive' || t.k === 'dig' || scramble) ? FORCED_ERROR_WEIGHT : 1;
-      c(t.p).errors += w;
-      const ek = ERR[t.k]; if (ek) c(t.p)[ek] += w;
+      // a miscommunication: the error is shared, half each
+      const ek = ERR[t.k];
+      for (const p of isShared(t) ? [t.p, t.p2!] : [t.p]) {
+        const pw = isShared(t) ? w / 2 : w;
+        c(p).errors += pw;
+        if (ek) c(p)[ek] += pw;
+      }
       if (f >= 0) credit(f);
     }
   }

@@ -196,10 +196,11 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   const [sel, setSel] = useState<number | null>(null);     // touch being edited
   const [fixServer, setFixServer] = useState(false);
   const [pairing, setPairing] = useState<number | null>(null);  // block touch waiting for its second blocker
+  const [miss, setMiss] = useState(false);  // ending on a miscommunication: waiting for the other player
   const [sheet, setSheet] = useState(false);  // shortcut sheet
   useEffect(() => { applyKeys(keysShown()); }, []);
   useEffect(() => { setSkill(null); }, [rally?.s, saved.length]);
-  useEffect(() => { setSel(null); setFixServer(false); setPairing(null); }, [rally?.s]);
+  useEffect(() => { setSel(null); setFixServer(false); setPairing(null); setMiss(false); }, [rally?.s]);
   // The predicted serve is shown as the first touch and saved with the next tap (or the result).
   const pre: Touch | null = rally && !saved.length && serve?.p ? { p: serve.p, k: 'serve', t: Math.round(serve.t * 10) / 10 } : null;
   const touches = pre ? [pre] : saved;
@@ -213,9 +214,15 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
   const addTouch = (p: string) => {
     if (!rally) return;
     if (blocked) return;
+    if (miss) {  // the other player in a miscommunication: the rally ends on their shared error
+      const i = touches.length - 1, b = touches[i];
+      setMiss(false);
+      if (b && p !== b.p) { onChange(touches.map((x, j) => j === i ? { ...x, p2: p } : x), { i, r: 'error' }); onDone(); }
+      return;
+    }
     if (pairing !== null) {  // the second blocker on a block
       const b = touches[pairing];
-      if (b && b.k === 'block' && p !== b.p) onChange(touches.map((x, i) => i === pairing ? { ...x, p2: p } : x), rally.end);
+      if (b && (b.k === 'block' || b.k === 'receive' || b.k === 'dig') && p !== b.p) onChange(touches.map((x, i) => i === pairing ? { ...x, p2: p } : x), rally.end);
       setPairing(null);
       return;
     }
@@ -319,7 +326,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
 
   const status = !rally ? 'Tap a rally to start tagging'
     : blocked ? 'Enter both teams before tagging'
-    : res ? <>Ended: <b className={res.good ? 'text-good' : 'text-bad'}>{res.label} · {name(res.who)}{res.who2 && <> + {name(res.who2)}</>}</b>{res.assist && <span className="text-muted"> (assist {name(res.assist)})</span>}{res.note && <span className="text-muted"> ({name(res.noteWho)} {res.note})</span>}{wonBy && <span className="text-muted"> · Team {wonBy.toUpperCase()}'s point</span>}</>
+    : res ? <>Ended: <b className={res.good ? 'text-good' : 'text-bad'}>{res.label} · {name(res.who)}{res.who2 && <> + {name(res.who2)}</>}</b>{res.assist && <span className="text-muted"> (assist {name(res.assist)})</span>}{res.note && <span className="text-muted"> ({name(res.noteWho)}{res.noteWho2 && <> + {name(res.noteWho2)}</>} {res.note})</span>}{wonBy && <span className="text-muted"> · Team {wonBy.toUpperCase()}'s point</span>}</>
     : touches.length ? 'Next touch, or how did it end?' : 'Who served?';
   const why = serve?.why ?? '';
 
@@ -341,7 +348,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
         <div className="rounded-lg bg-raised px-3 py-1.5 text-xs">
           <div className="text-muted">
             Listening. Say each touch as it happens: <b className="text-ink">"Alex serve, Ben pass, Chris set, Dana kill"</b>.
-            {' '}End with kill / ace / point or out / net / error. Also: tip, perfect / okay / poor, guest A / guest B (or guest one / guest two), undo.
+            {' '}End with kill / ace / point or out / net / error. Also: tip, perfect / okay / poor, guest A / guest B (or guest one / guest two), "Ben and Chris block", "Ben and Chris receive error" (miscommunication), undo.
           </div>
           {voice.heard && <div className="mt-1 truncate">Heard: <i>{voice.heard}</i></div>}
           {canName && (
@@ -434,6 +441,25 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
               )}
             </div>
           )}
+          {dt && (dt.k === 'receive' || dt.k === 'dig') && rally!.end?.r === 'error' && rally!.end.i === di && (
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-muted">{name(dt.p)}'s {SKILLS[dt.k].toLowerCase()} error:</span>
+              {pairing === di ? (
+                <>
+                  <span className="font-semibold text-ball">tap the other player</span>
+                  <button className="rounded-md border border-line px-2 py-1" onClick={() => setPairing(null)}>Cancel</button>
+                </>
+              ) : dt.p2 ? (
+                <button className="rounded-md border border-court bg-court/25 px-2 py-1 font-semibold" title="Only one player's error after all"
+                  onClick={() => { const { p2: _p2, ...rest } = dt; onChange(saved.map((x, j) => j === di ? rest : x), rally!.end); }}>
+                  shared with {name(dt.p2)}, half each ✕
+                </button>
+              ) : (
+                <button className="rounded-md border border-line px-2 py-1 font-semibold" title="Two players got in each other's way (or both left it): the error is split, half each"
+                  onClick={() => setPairing(di)}>＋ Miscommunication (share with another player)</button>
+              )}
+            </div>
+          )}
           {detailOpts.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="w-full text-[11px] text-muted">
@@ -484,6 +510,19 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
                 <button className="flex w-full items-center justify-between rounded-lg border border-bad/40 bg-bad/10 px-3 py-2.5 text-left text-sm font-semibold text-bad" onClick={() => finish(last.i, 'error')}>
                   <span>✗ {what(last.t)} error</span><Kbd k="X" />
                 </button>
+                {(last.t.k === 'receive' || last.t.k === 'dig') && !pre && (
+                  miss ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-bad/40 px-3 py-2 text-xs">
+                      <span className="flex-1 font-semibold text-bad">Miscommunication with {name(last.t.p)}: tap the other player</span>
+                      <button className="rounded-md border border-line px-2 py-1" onClick={() => setMiss(false)}>Cancel</button>
+                    </div>
+                  ) : (
+                    <button className="w-full rounded-lg border border-dashed border-bad/40 px-3 py-1.5 text-left text-xs text-bad"
+                      title="Two players got in each other's way, or both left it: the error is split, half each" onClick={() => setMiss(true)}>
+                      ✗ Miscommunication: {name(last.t.p)} and someone else (half each)
+                    </button>
+                  )
+                )}
                 {before && (
                   <div className="grid grid-cols-2 gap-1.5 text-xs">
                     <button className="rounded-lg border border-line bg-raised px-2 py-1.5 font-semibold text-good" onClick={() => finish(before.i, 'point')}>✓ {what(before.t)} scored</button>
@@ -955,7 +994,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
               const res = rallyResult(r, sameTeamIn(game));
               if (res) return (
                 <span className={`truncate rounded-full px-2 py-0.5 text-xs ${res.good ? 'bg-good/20 text-good' : 'bg-bad/20 text-bad'}`}>
-                  {res.label} · {name(res.who)}{res.who2 && <> + {name(res.who2)}</>}{res.assist && <span className="opacity-70"> (assist {name(res.assist)})</span>}{res.note && <span className="opacity-70"> ({name(res.noteWho)} {res.note})</span>}
+                  {res.label} · {name(res.who)}{res.who2 && <> + {name(res.who2)}</>}{res.assist && <span className="opacity-70"> (assist {name(res.assist)})</span>}{res.note && <span className="opacity-70"> ({name(res.noteWho)}{res.noteWho2 && <> + {name(res.noteWho2)}</>} {res.note})</span>}
                 </span>
               );
               if (mode === 'tag') return <span className="text-xs text-muted">{r.touches?.length ? `${r.touches.length} touches…` : 'untagged'}</span>;

@@ -1,4 +1,4 @@
-import { DEFAULT_SET_GRADE, assistIndex, forcedBy, isBlockout, isGuest, type Game, type Rally, type SameTeam, type Skill, type Touch } from './games';
+import { DEFAULT_SET_GRADE, assistIndex, forcedBy, isBlockout, isGuest, isShared, type Game, type Rally, type SameTeam, type Skill, type Touch } from './games';
 import { gameSetup, teamOf } from './rotation';
 
 /** Teams from a game's court setup, to keep assists within a team (unknown players count as teammates). */
@@ -102,15 +102,17 @@ function addTouches(r: Rally, clip: (t: number) => Clip, add: Add, sameTeam?: Sa
   if (!r.end) return;  // a rally counts once its result is tagged (a serve confirmed in review isn't stats yet)
   const erred = r.end.r === 'error' ? r.end.i : -1;
   ts.forEach((t, j) => {
-    add(t.p, ATTEMPT[t.k], clip(t.t)); detail(t, !!r.end && j !== erred).forEach(k => add(t.p, k, clip(t.t)));
-    if (t.p2) add(t.p2, 'block', clip(t.t));  // second blocker
+    // a miscommunication: both players get half the touch; a second blocker gets a whole block touch
+    const sh = isShared(t) ? { w: 0.5 } : {};
+    add(t.p, ATTEMPT[t.k], { ...clip(t.t), ...sh }); detail(t, !!r.end && j !== erred).forEach(k => add(t.p, k, clip(t.t)));
+    if (t.p2) add(t.p2, t.k === 'block' ? 'block' : ATTEMPT[t.k], { ...clip(t.t), ...sh });
   });
   const kill = (x: Touch) => { if (x.k === 'attack' && x.a) add(x.p, TYPE_KILL[x.a], clip(x.t)); };
   const t = ts[r.end.i], prev = ts[r.end.i - 1];
   if (!t) return;
   if (r.end.r === 'point') {
     add(t.p, POINT[t.k], clip(t.t));
-    if (t.p2) add(t.p2, POINT[t.k], clip(t.t));
+    if (t.p2 && t.k === 'block') add(t.p2, POINT[t.k], clip(t.t));
     kill(t);
     // assist: the set (or a teammate's dig) just before the kill; never the attacker themselves
     const a = assistIndex(ts, r.end.i, sameTeam);
@@ -122,11 +124,14 @@ function addTouches(r: Rally, clip: (t: number) => Clip, add: Add, sameTeam?: Sa
     // a blockout isn't the blocker's error; a forced receive / dig error, or the error ending a scramble after an
     // attack, counts half (as in the player ratings)
     const half = f >= 0 && (t.k === 'receive' || t.k === 'dig' || f < r.end.i - 1);
-    if (!isBlockout(ts, r.end, sameTeam)) add(t.p, ERROR[t.k] ?? 'oerr', { ...clip(t.t), ...(half ? { w: 0.5 } : {}) });
+    // a miscommunication: the error is shared, half each
+    const w = (half ? 0.5 : 1) * (isShared(t) ? 0.5 : 1);
+    if (!isBlockout(ts, r.end, sameTeam))
+      for (const p of isShared(t) ? [t.p, t.p2!] : [t.p]) add(p, ERROR[t.k] ?? 'oerr', { ...clip(t.t), ...(w < 1 ? { w } : {}) });
     if (f >= 0) {
       const by = ts[f];
       add(by.p, POINT[by.k], clip(by.t));
-      if (by.p2) add(by.p2, POINT[by.k], clip(by.t));
+      if (by.p2 && by.k === 'block') add(by.p2, POINT[by.k], clip(by.t));
       kill(by);
       const a = assistIndex(ts, f, sameTeam);
       if (a >= 0) add(ts[a].p, 'assist', clip(ts[a].t));
