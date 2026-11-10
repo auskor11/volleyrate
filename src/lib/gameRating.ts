@@ -14,7 +14,6 @@ export const GAME_RATING = {
   minus: { aerr: 1, serr: 1, rerr: 1, oerr: 1, blocked: 0.5 } as Partial<Record<StatKey, number>>,
   base: 6,          // an even game
   perPoint: 0.5,    // score per net point (per 50 rallies)
-  winBonus: 0.5,
   medals: { gold: 7.5, silver: 6 },  // below silver: bronze
 } as const;
 
@@ -55,7 +54,7 @@ export function matchRatings(game: Game): MatchResult | null {
     const minus = Object.entries(GAME_RATING.minus).reduce((t, [k, w]) => t + w * weighted(s, k as StatKey), 0);
     const net = plus - minus;
     const team = court ? teamOf(court, id) : null;
-    const raw = GAME_RATING.base + GAME_RATING.perPoint * net * (50 / tagged) + (winner && team === winner ? GAME_RATING.winBonus : 0);
+    const raw = GAME_RATING.base + GAME_RATING.perPoint * net * (50 / tagged);  // no bonus for winning: only what you did counts
     return { id, team, score: Math.round(Math.min(10, Math.max(0, raw)) * 10) / 10, net, medal: 'bronze' as Medal, titles: [] as string[], stats: s };
   }).sort((a, b) => b.score - a.score || b.net - a.net);
 
