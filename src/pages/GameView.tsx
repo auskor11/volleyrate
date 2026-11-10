@@ -863,16 +863,29 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
     const c = g ? guestServes(base, g) : makeServer(base, p);
     good(p, sameCourt(c, view.state) ? undefined : c, won);
   };
-  // moving a start / end over other rallies (the detector split one rally in two): they become part of this one
+  // moving a start / end over other rallies (the detector split one rally in two): they become part of this one,
+  // tags and all: the touches join up in time order, and the rally ends the way its last tagged part ended
   const resize = (patch: { s: number } | { e: number }, note: string) => {
     if (!rally) return;
     const s = 's' in patch ? patch.s : rally.s, e = 'e' in patch ? patch.e : rally.e;
     const inside = rallies.filter(r => r !== rally && r.s >= s && r.s < e);
-    const tagged = inside.filter(r => r.touches?.length || r.tag);
-    if (tagged.length && !confirm(`This also takes in ${inside.length === 1 ? 'the rally' : `${inside.length} rallies`} at ${inside.map(r => fmtTime(r.s)).join(', ')} (now part of this one). ${tagged.length === 1 && inside.length === 1 ? 'It has' : `${tagged.length} of them have`} tags that will be removed. Carry on?`)) return;
-    const merged = { ...rally, ...patch, st: rally.st === 'auto' ? 'ok' as const : rally.st };
-    const more = inside.length ? ` · merged in the rally${inside.length > 1 ? 's' : ''} at ${inside.map(r => fmtTime(r.s)).join(', ')}` : '';
-    commit(rallies.filter(r => !inside.includes(r)).map(r => r === rally ? merged : r), s,
+    const parts = [rally, ...inside].sort((a, b) => a.s - b.s);
+    const touches: Touch[] = [];
+    let last: { t: Touch; r: RallyEnd['r'] } | undefined;
+    for (const r of parts) {
+      if (!r.touches?.length) continue;
+      touches.push(...r.touches);
+      last = r.end && r.end.i < r.touches.length ? { t: r.touches[r.end.i], r: r.end.r } : undefined;  // only the last tagged part's end counts
+    }
+    touches.sort((a, b) => a.t - b.t);
+    const end: RallyEnd | undefined = last && { i: touches.indexOf(last.t), r: last.r };
+    const tag = touches.length ? undefined : [...parts].reverse().find(r => r.tag)?.tag;  // an older point tag
+    const { touches: _t, end: _e, tag: _g, ...base } = rally;
+    const merged: Rally = { ...base, ...patch, st: rally.st === 'auto' ? 'ok' : rally.st,
+      ...(touches.length ? { touches, ...(end ? { end } : {}) } : {}), ...(tag ? { tag } : {}) };
+    const kept = inside.filter(r => r.touches?.length).length;
+    const more = inside.length ? ` · merged in the rally${inside.length > 1 ? 's' : ''} at ${inside.map(r => fmtTime(r.s)).join(', ')}${kept ? ' (tags kept)' : ''}` : '';
+    commit(rallies.filter(r => !inside.includes(r)).map(r => r === rally ? (inside.length ? merged : { ...rally, ...patch, st: merged.st }) : r), s,
       [`rev:${rally.as ?? rally.s}:${note.split(':')[0]}`, `${label(rally)}: ${note}${more}`]);
   };
   const setStart = () => { const t = now(); if (rally && t < rally.e) resize({ s: t }, `start: changed start to ${fmtTime(t)}`); };
