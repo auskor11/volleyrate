@@ -58,12 +58,14 @@ export type Skill = keyof typeof SKILLS;
 // Optional detail: q = quality of a receive / dig / set (3 perfect or good, 2 OK, 1 poor);
 // a = attack type when it isn't a spike (missing = spike).
 // p2 = a second player: on a block, the second blocker (both get the block touch and any block point); on a
-// receive / dig that ended the rally as an error, a miscommunication (both left it or both went): the touch and
-// the error are shared, half each.
+// receive / dig / set / attack / free ball that ended the rally as an error, a miscommunication (both left it or
+// both went): the touch and the error are shared, half each.
 export interface Touch { p: string; k: Skill; t: number; q?: Grade; a?: AttackType; p2?: string }
 
 /** A touch shared by two players who got in each other's way (not a double block): half each. */
 export const isShared = (t: Touch) => !!t.p2 && t.k !== 'block';
+/** Touches a miscommunication can happen on: anything but a serve (one server) or a block (two = a double block). */
+export const canShare = (k: Skill) => k !== 'serve' && k !== 'block';
 
 /** A blockout or block error straight after the other team's attack: the attacker scores, but the blocker isn't
  *  marked down (getting a hand on the ball is good): it counts as a block touch, not an error. */

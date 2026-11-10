@@ -17,7 +17,7 @@ import { buildModel, effectiveRatings, type RatingModel } from '../lib/engine';
 import { useEngineSettings } from '../lib/rated';
 import { createBackup } from '../lib/backups';
 import { CATEGORIES, overall } from '../lib/ratings';
-import { logHistory, setGameRating, useGames, useHistory } from '../lib/games';
+import { canShare, logHistory, setGameRating, useGames, useHistory } from '../lib/games';
 import { useHighlights } from '../lib/highlights';
 import { detectorSupported, runDetector } from '../lib/detector';
 import {
@@ -222,7 +222,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
     }
     if (pairing !== null) {  // the second blocker on a block
       const b = touches[pairing];
-      if (b && (b.k === 'block' || b.k === 'receive' || b.k === 'dig') && p !== b.p) onChange(touches.map((x, i) => i === pairing ? { ...x, p2: p } : x), rally.end);
+      if (b && (b.k === 'block' || canShare(b.k)) && p !== b.p) onChange(touches.map((x, i) => i === pairing ? { ...x, p2: p } : x), rally.end);
       setPairing(null);
       return;
     }
@@ -348,7 +348,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
         <div className="rounded-lg bg-raised px-3 py-1.5 text-xs">
           <div className="text-muted">
             Listening. Say each touch as it happens: <b className="text-ink">"Alex serve, Ben pass, Chris set, Dana kill"</b>.
-            {' '}End with kill / ace / point or out / net / error. Also: tip, perfect / okay / poor, guest A / guest B (or guest one / guest two), "Ben and Chris block", "Ben and Chris receive error" (miscommunication), undo.
+            {' '}End with kill / ace / point or out / net / error. Also: tip, perfect / okay / poor, guest A / guest B (or guest one / guest two), "Ben and Chris block", "Ben and Chris receive error" or "Chris and Dana attack error" (miscommunication), undo.
           </div>
           {voice.heard && <div className="mt-1 truncate">Heard: <i>{voice.heard}</i></div>}
           {canName && (
@@ -441,7 +441,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
               )}
             </div>
           )}
-          {dt && (dt.k === 'receive' || dt.k === 'dig') && rally!.end?.r === 'error' && rally!.end.i === di && (
+          {dt && canShare(dt.k) && rally!.end?.r === 'error' && rally!.end.i === di && (
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
               <span className="text-muted">{name(dt.p)}'s {SKILLS[dt.k].toLowerCase()} error:</span>
               {pairing === di ? (
@@ -510,7 +510,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
                 <button className="flex w-full items-center justify-between rounded-lg border border-bad/40 bg-bad/10 px-3 py-2.5 text-left text-sm font-semibold text-bad" onClick={() => finish(last.i, 'error')}>
                   <span>✗ {what(last.t)} error</span><Kbd k="X" />
                 </button>
-                {(last.t.k === 'receive' || last.t.k === 'dig') && !pre && (
+                {canShare(last.t.k) && !pre && (
                   miss ? (
                     <div className="flex items-center gap-2 rounded-lg border border-bad/40 px-3 py-2 text-xs">
                       <span className="flex-1 font-semibold text-bad">Miscommunication with {name(last.t.p)}: tap the other player</span>

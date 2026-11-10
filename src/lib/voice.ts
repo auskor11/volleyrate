@@ -1,6 +1,6 @@
 // Voice tagging: turn what the tagger says ("Alex serve, Ben pass, Chris set, Dana kill") into touches.
 // Uses the browser's own speech recognition (free; Chrome and Safari), nothing is stored.
-import { nextSkill, type AttackType, type Grade, type RallyEnd, type Skill, type Touch } from './games';
+import { canShare, nextSkill, type AttackType, type Grade, type RallyEnd, type Skill, type Touch } from './games';
 
 export type VoiceOp =
   | { op: 'touch'; p: string; p2?: string; k?: Skill; a?: AttackType; q?: Grade }  // p2: a second blocker ("Brayden and Jeremy block")
@@ -123,9 +123,9 @@ export function applyVoice(saved: Touch[], pre: Touch | null, ops: VoiceOp[], ti
     const prevT = list[list.length - 1]?.t ?? -Infinity;
     const t = Math.round(Math.max(times[n] ?? prevT, prevT + 0.1) * 10) / 10;
     const k = o.k ?? nextSkill(list);
-    // "Ben and Chris receive error": a miscommunication, the error shared half each
+    // "Ben and Chris receive error" / "Chris and Dana attack error": a miscommunication, the error shared half each
     const next = ops[idx + 1];
-    const shared = !!o.p2 && (k === 'receive' || k === 'dig') && next?.op === 'end' && next.r === 'error';
+    const shared = !!o.p2 && canShare(k) && next?.op === 'end' && next.r === 'error';
     const touch: Touch = { p: o.p, k, t, ...(o.a ? { a: o.a } : {}), ...(o.q ? { q: o.q } : {}), ...(o.p2 && (k === 'block' || shared) ? { p2: o.p2 } : {}) };
     // saying the serve replaces the prediction, like choosing Serve by hand
     list = virtual && k === 'serve' ? [touch] : [...list, touch];
