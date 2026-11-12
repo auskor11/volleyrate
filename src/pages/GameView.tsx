@@ -28,7 +28,7 @@ import {
 import { HighlightDialog, ShareRally } from '../components/RallyActions';
 import { AutoplaySwitch, useAutoplay } from '../components/ClipReel';
 import { Avatar } from '../components/Avatar';
-import { fileDuration, fmtSize, removeVideo, saveVideo, useSavedVideos, type SavedVideo } from '../lib/offline';
+import { fileDuration, fmtSize, removeVideo, saveVideo, SaveError, useSavedVideos, type SavedVideo } from '../lib/offline';
 import { MatchCard } from '../components/MatchCard';
 import { matchRatings } from '../lib/gameRating';
 import { Court } from '../components/Court';
@@ -2089,14 +2089,23 @@ function OfflineDialog({ youtubeId, title, duration, saved, onClose }: {
   useEffect(() => { navigator.storage?.estimate?.().then(e => e.quota ? setSpace({ usage: e.usage ?? 0, quota: e.quota }) : null).catch(() => {}); }, [done, saved]);
   const pick = async (f: File) => {
     setFile(f); setError(''); setWarn('');
+    const warns: string[] = [];
+    if (f.size > 2e9) warns.push(`This is ${fmtSize(f.size)}, which looks like the full-size video. It may not fit, and copying takes a long time. A phone-sized copy (step 1) is about 0.75 GB.`);
+    if (space && f.size > space.quota - space.usage) warns.push(`There's only room for ${fmtSize(Math.max(0, space.quota - space.usage))} more, so this won't fit.`);
     const d = await fileDuration(f);
-    if (d && duration && Math.abs(d - duration) > 5) setWarn(`This file is ${fmtTime(d)} long but the game's video is ${fmtTime(duration)}. Rally times would be off unless it's the same recording.`);
+    if (d && duration && Math.abs(d - duration) > 5) warns.push(`This file is ${fmtTime(d)} long but the game's video is ${fmtTime(duration)}. Rally times would be off unless it's the same recording.`);
+    setWarn(warns.join(' '));
   };
   const save = async () => {
     if (!file) return;
     setError(''); setProgress(0);
     try { await saveVideo(youtubeId, title, file, setProgress); setDone(true); }
-    catch (e) { setError(`Couldn't save it: ${(e as Error).message}. The phone may be out of space.`); }
+    catch (e) {
+      const m = (e as Error).message;
+      setError(e instanceof SaveError && m.startsWith('stalled')
+        ? `The copy stopped (${m}). This happens when the screen locks or you switch apps. Keep VolleyRate open with the screen on, then tap Save again.`
+        : `Couldn't save it: ${m}.${e instanceof SaveError ? '' : ' The phone may be out of space.'}`);
+    }
     finally { setProgress(null); }
   };
   return (
@@ -2128,7 +2137,7 @@ function OfflineDialog({ youtubeId, title, duration, saved, onClose }: {
             {progress !== null && (
               <div>
                 <div className="h-2 overflow-hidden rounded-full bg-raised"><div className="h-full bg-ball transition-all" style={{ width: `${Math.round(progress * 100)}%` }} /></div>
-                <p className="mt-1 text-xs text-muted">Saving… {Math.round(progress * 100)}%. Keep this screen open.</p>
+                <p className="mt-1 text-xs text-muted">Saving… {fmtSize(progress * (file?.size ?? 0))} of {fmtSize(file?.size ?? 0)} ({Math.round(progress * 100)}%). Keep this screen open and don't switch apps.</p>
               </div>
             )}
             <button disabled={!file || progress !== null} onClick={save} className="w-full rounded-lg bg-ball py-2.5 font-semibold text-bg disabled:opacity-40">Save on this device</button>

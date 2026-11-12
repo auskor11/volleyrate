@@ -46,26 +46,58 @@ export async function localVideoUrl(youtubeId: string): Promise<string | null> {
   } catch { return null; }
 }
 
+const CHUNK = 8 * 1024 * 1024;   // copy 8 MB at a time (tiny stream pieces made a 0.75 GB copy take thousands of steps)
+const STALL_MS = 45_000;          // a step this slow means the copy has stopped (screen locked, app in the background)
+
+/** Why a copy failed, in words for the person saving. */
+export class SaveError extends Error {}
+
+function step<T>(p: Promise<T>, done: number): Promise<T> {
+  let t: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    p.finally(() => clearTimeout(t)),
+    new Promise<never>((_, reject) => { t = setTimeout(() => reject(new SaveError(`stalled at ${fmtSize(done)}`)), STALL_MS); }),
+  ]);
+}
+
+/** Keep the screen on while copying: if the phone locks, iOS pauses the page and the copy stops. */
+async function keepAwake(): Promise<() => void> {
+  let lock: { release(): Promise<void> } | null = null;
+  const get = async () => { try { lock = await (navigator as unknown as { wakeLock?: { request(t: 'screen'): Promise<{ release(): Promise<void> }> } }).wakeLock?.request('screen') ?? null; } catch { /* not allowed */ } };
+  const again = () => { if (document.visibilityState === 'visible') get(); };
+  await get();
+  document.addEventListener('visibilitychange', again);
+  return () => { document.removeEventListener('visibilitychange', again); lock?.release().catch(() => {}); };
+}
+
 /** Copy a video file into this device's storage for the given YouTube video. */
 export async function saveVideo(youtubeId: string, title: string, file: File, onProgress?: (done: number) => void): Promise<void> {
   try { await navigator.storage?.persist?.(); } catch { /* best effort: ask the browser not to clear it */ }
-  if (await opfsOK()) {
-    const h = await (await opfsDir()).getFileHandle(youtubeId, { create: true });
-    const w = await h.createWritable();
-    const reader = file.stream().getReader();
-    let done = 0;
-    for (;;) {
-      const { value, done: end } = await reader.read();
-      if (end) break;
-      await w.write(value);
-      done += value.byteLength;
-      onProgress?.(done / file.size);
+  const release = await keepAwake();
+  try {
+    if (await opfsOK()) {
+      const dir = await opfsDir();
+      const w = await (await dir.getFileHandle(youtubeId, { create: true })).createWritable();
+      let done = 0;
+      try {
+        while (done < file.size) {
+          const buf = await step(file.slice(done, done + CHUNK).arrayBuffer(), done);
+          await step(w.write(buf), done);
+          done += buf.byteLength;
+          onProgress?.(done / file.size);
+        }
+        await step(w.close(), done);
+      } catch (e) {
+        w.abort().catch(() => {});
+        try { await dir.removeEntry(youtubeId); } catch { /* nothing kept */ }
+        if (e instanceof DOMException && e.name === 'QuotaExceededError') throw new SaveError(`not enough room on this phone (stopped at ${fmtSize(done)})`);
+        throw e;
+      }
+    } else {
+      await tx('videos', 'readwrite', s => s.put(file, youtubeId));
+      onProgress?.(1);
     }
-    await w.close();
-  } else {
-    await tx('videos', 'readwrite', s => s.put(file, youtubeId));
-    onProgress?.(1);
-  }
+  } finally { release(); }
   await tx('meta', 'readwrite', s => s.put({ id: youtubeId, title, size: file.size, savedAt: Date.now() } satisfies SavedVideo, youtubeId));
   changed();
 }
