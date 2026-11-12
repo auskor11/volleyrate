@@ -164,7 +164,7 @@ export function assistIndex(ts: Touch[], i: number, sameTeam?: SameTeam): number
 }
 
 /** Short description of how a rally ended, from touches or an older point tag. */
-export function rallyResult(r: Rally, sameTeam?: SameTeam): { label: string; good: boolean; who: string; who2?: string; note?: string; noteWho?: string; noteWho2?: string; assist?: string } | null {
+export function rallyResult(r: Rally, sameTeam?: SameTeam): { label: string; good: boolean; who: string; who2?: string; note?: string; noteWho?: string; noteWho2?: string; assist?: string; weight?: number; weightWhy?: string } | null {
   if (r.touches?.length && r.end) {
     const ts = r.touches;
     const t = ts[r.end.i];
@@ -173,16 +173,40 @@ export function rallyResult(r: Rally, sameTeam?: SameTeam): { label: string; goo
     // the set (or a teammate's dig) just before a kill is an assist
     const assistFor = (i: number) => { const a = assistIndex(ts, i, sameTeam); return a >= 0 ? ts[a].p : undefined; };
     const f = forcedBy(ts, r.end, sameTeam);
+    // an error that counts less than a whole one against whoever made it (shown as "counts half" etc.)
+    const ew = point ? { w: 1 } : errorWeight(ts, r.end, sameTeam);
+    const weight = ew.w > 0 && ew.w < 1 ? { weight: ew.w, weightWhy: ew.why } : {};
     if (f >= 0) {
       const by = ts[f];
-      return { label: POINT_LABEL[by.k]!, good: true, who: by.p, ...(by.p2 && by.k === 'block' ? { who2: by.p2 } : {}), note: t.k === 'block' ? 'blockout' : `${SKILLS[t.k].toLowerCase()} error`, noteWho: t.p, ...(isShared(t) ? { noteWho2: t.p2 } : {}), assist: assistFor(f) };
+      return { label: POINT_LABEL[by.k]!, good: true, who: by.p, ...(by.p2 && by.k === 'block' ? { who2: by.p2 } : {}), note: t.k === 'block' ? 'blockout' : `${SKILLS[t.k].toLowerCase()} error`, noteWho: t.p, ...(isShared(t) ? { noteWho2: t.p2 } : {}), assist: assistFor(f), ...weight };
     }
     const label = point ? POINT_LABEL[t.k] ?? `${SKILLS[t.k]} point` : `${SKILLS[t.k]} error`;
-    return { label, good: point, who: t.p, ...(t.p2 && (point ? t.k === 'block' : isShared(t)) ? { who2: t.p2 } : {}), assist: point ? assistFor(r.end.i) : undefined };
+    return { label, good: point, who: t.p, ...(t.p2 && (point ? t.k === 'block' : isShared(t)) ? { who2: t.p2 } : {}), assist: point ? assistFor(r.end.i) : undefined, ...weight };
   }
   if (r.tag) return { label: OUTCOMES[r.tag.o].label, good: OUTCOMES[r.tag.o].good, who: r.tag.p, assist: r.tag.o === 'kill' ? r.tag.a : undefined };
   return null;
 }
+
+/**
+ * How much a rally-ending error counts against each player who made it, and why (one place for ratings, stats
+ * and the result note): a blockout 0; a forced receive / dig error, the error ending a scramble after an attack,
+ * or one straight after a teammate's Poor touch 0.5 (not stacked); a miscommunication halves it again for each.
+ */
+export function errorWeight(ts: Touch[], end: RallyEnd, sameTeam?: SameTeam): { w: number; why?: string } {
+  const t = ts[end.i];
+  if (end.r !== 'error' || !t) return { w: 1 };
+  if (isBlockout(ts, end, sameTeam)) return { w: 0, why: 'blockout' };
+  const f = forcedBy(ts, end, sameTeam);
+  const why = f >= 0 && (t.k === 'receive' || t.k === 'dig') ? 'forced'
+    : f >= 0 && f < end.i - 1 ? 'scramble'
+    : afterPoorTouch(ts, end, sameTeam) ? `after a poor ${ts[end.i - 1].k}` : undefined;
+  const w = (why ? 0.5 : 1) * (isShared(t) ? 0.5 : 1);
+  return { w, ...(why || isShared(t) ? { why: [why, isShared(t) && 'shared'].filter(Boolean).join(', ') } : {}) };
+}
+
+/** "counts half (after a poor set)" for a result whose error counts less than a whole one. */
+export const weightNote = (res: { weight?: number; weightWhy?: string }) =>
+  !res.weight ? '' : `counts ${res.weight === 0.5 ? 'half' : res.weight === 0.25 ? 'a quarter' : res.weight}${res.weightWhy ? ` (${res.weightWhy})` : ''}`;
 
 export const isTagged = (r: Rally) => !!(r.tag || (r.touches?.length && r.end));
 

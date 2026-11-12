@@ -13,7 +13,7 @@
 // - Only rallies tagged touch-by-touch (with a result) count; quick point tags lack attempt counts.
 // - No caps beyond the 0–99 scale.
 import { sameTeamIn } from './stats';
-import { DEFAULT_SET_GRADE, afterPoorTouch, assistIndex, forcedBy, gameWeight, isApplied, isBlockout, isGuest, isShared, type Game, type Skill } from './games';
+import { DEFAULT_SET_GRADE, assistIndex, forcedBy, gameWeight, isApplied, errorWeight, isGuest, isShared, type Game, type Skill } from './games';
 import type { Player } from './data';
 import type { Ratings } from './ratings';
 
@@ -28,9 +28,6 @@ export const ENGINE = {
 export interface EngineSettings { strength: number; dataScale: number; expPerGame: number; expMax: number }
 export const DEFAULT_SETTINGS: EngineSettings = { strength: 1.6, dataScale: 0.4, expPerGame: 1.5, expMax: 20 };
 
-// A receive / dig error straight after the other side's serve, attack or block is hard to avoid:
-// it counts this much against Receiving and Consistency (the attacker still gets full credit).
-export const FORCED_ERROR_WEIGHT = 0.5;
 
 // What the measurable attributes are based on. `attr` = the attribute a metric adjusts; `rate` = rating
 // points per percentage point; `graded` = built from optional quality grades (own benchmark start).
@@ -113,13 +110,10 @@ function gameCounts(g: Game): Record<string, Counts> {
       // a blockout isn't the blocker's error (it stays a block touch); a forced receive / dig error counts half,
       // and so does the error that ends a team's failed scramble after an attack (e.g. a hustle set off a bad dig),
       // or one straight after a teammate's poor receive / dig / set (not stacked: still half)
-      const scramble = f >= 0 && f < r.end.i - 1;
-      const w = isBlockout(ts, r.end, sameTeam) ? 0
-        : (f >= 0 && (t.k === 'receive' || t.k === 'dig' || scramble)) || afterPoorTouch(ts, r.end, sameTeam) ? FORCED_ERROR_WEIGHT : 1;
-      // a miscommunication: the error is shared, half each
+      // (a miscommunication: the error is shared, half each; see errorWeight)
+      const pw = errorWeight(ts, r.end, sameTeam).w;
       const ek = ERR[t.k];
       for (const p of isShared(t) ? [t.p, t.p2!] : [t.p]) {
-        const pw = isShared(t) ? w / 2 : w;
         c(p).errors += pw;
         if (ek) c(p)[ek] += pw;
       }

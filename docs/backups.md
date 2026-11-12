@@ -1,5 +1,7 @@
 # Database backups
 
+(For the code, see the backup tags in [code-tags.md](code-tags.md).)
+
 `npm run backup` copies the whole database (every collection, including game history, the team list, highlights
 and rating backups) to `private/backups/volleyrate-<date>.json` on this Mac. It only reads from Firebase, and keeps
 the newest 26 backups. `private/` never goes to GitHub.

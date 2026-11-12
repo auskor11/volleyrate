@@ -258,7 +258,14 @@ function PartnersSection({ playerId }: { playerId: string }) {
   const setBy = top(Object.fromEntries(Object.entries(book.assists).map(([s, m]) => [s, m[playerId] ?? 0]).filter(([, n]) => (n as number) > 0)));
   const mates = Object.entries(book.together[playerId] ?? {}).filter(([, r]) => r.games >= 2)
     .sort((a, b) => b[1].won / b[1].games - a[1].won / a[1].games || b[1].games - a[1].games).slice(0, 3);
-  if (!setFor.length && !setBy.length && !mates.length) return null;
+  // head to head: every player they've shared a court with, as teammates and as opponents (games with a winner)
+  const h2h = [...new Set([...Object.keys(book.together[playerId] ?? {}), ...Object.keys(book.against[playerId] ?? {})])]
+    .filter(id => players.some(p => p.id === id))
+    .map(id => ({ id, tog: book.together[playerId]?.[id], vs: book.against[playerId]?.[id] }))
+    .sort((a, b) => ((b.tog?.games ?? 0) + (b.vs?.games ?? 0)) - ((a.tog?.games ?? 0) + (a.vs?.games ?? 0)) || name(a.id).localeCompare(name(b.id)));
+  if (!setFor.length && !setBy.length && !mates.length && !h2h.length) return null;
+  const rec = (r?: { games: number; won: number }) => !r ? <span className="text-muted">–</span>
+    : <b className={r.won * 2 > r.games ? 'text-good' : r.won * 2 < r.games ? 'text-bad' : 'text-ink'}>{r.won}–{r.games - r.won}</b>;
   const list = (xs: [string, number][]) => xs.map(([id, n]) => <Link key={id} to={`/players/${id}`} className="mr-2 inline-block">{name(id)} <b className="text-ball">{n}</b></Link>);
   return (
     <section className="rounded-xl border border-line bg-surface p-4 text-sm">
@@ -272,6 +279,24 @@ function PartnersSection({ playerId }: { playerId: string }) {
         <p className="mt-1"><span className="text-muted">Best record with:</span> {mates.map(([id, r]) => (
           <Link key={id} to={`/compare?a=${playerId}&b=${id}`} className="mr-2 inline-block">{name(id)} <b className="text-good">{r.won}–{r.games - r.won}</b></Link>
         ))}</p>
+      )}
+      {h2h.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs text-ball">Head to head with everyone ({h2h.length})</summary>
+          <table className="mt-1 w-full text-left tabular-nums">
+            <thead><tr className="text-xs text-muted"><th className="py-1 font-normal">Player</th><th className="font-normal">With (W–L)</th><th className="font-normal">Against (W–L)</th></tr></thead>
+            <tbody className="divide-y divide-line">
+              {h2h.map(x => (
+                <tr key={x.id}>
+                  <td className="py-1"><Link to={`/compare?a=${playerId}&b=${x.id}`}>{name(x.id)}</Link></td>
+                  <td>{rec(x.tog)}</td>
+                  <td>{rec(x.vs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-1 text-[11px] text-muted">Games with a winner and the teams set up. "Against" is this player's record vs them.</p>
+        </details>
       )}
     </section>
   );
@@ -349,10 +374,10 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
       Game stats appear here once games are tagged (Games → a game → Tag).
     </section>
   );
-  // forced receive / dig errors and the error ending a scramble count half, as in the ratings
+  // some errors count half (forced, scramble, after a Poor touch) or are shared, as in the ratings
   const c = (k: StatKey) => st[k].reduce((t, x) => t + (x.w ?? 1), 0);
   const halves = (k: StatKey) => st[k].some(x => x.w !== undefined);
-  const fmtN = (x: number) => (Number.isInteger(x) ? String(x) : x.toFixed(1));
+  const fmtN = (x: number) => String(Math.round(x * 100) / 100);  // 2.25 stays 2.25 (a shared error can be a quarter)
   const rates: [string, string][] = [
     ['Kill %', ratio(c('kill'), c('attack'))],
     ['Hitting eff.', c('attack') ? `${Math.round((100 * (c('kill') - c('aerr') - c('blocked'))) / c('attack'))}%` : '–'],
@@ -383,7 +408,7 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
             <div className="flex flex-1 flex-wrap gap-1.5">
               {g.stats.map(({ k, good }) => (
                 <button key={k} onClick={() => setOpen(open === k ? null : k)}
-                  title={halves(k) ? `${st[k].length} in all: forced errors (off an ace, kill or block) and errors ending a scramble count half` : undefined}
+                  title={halves(k) ? `${st[k].length} in all: forced errors (off an ace, kill or block), errors ending a scramble and errors right after a teammate's Poor touch count half; a miscommunication splits it in two` : undefined}
                   className={`rounded-lg px-2 py-1 text-xs ${open === k ? 'bg-raised ring-1 ring-ball' : 'bg-raised/50'}`}>
                   <b className={`font-display text-base ${!c(k) ? 'text-muted' : good === true ? 'text-good' : good === false ? 'text-bad' : 'text-ink'}`}>{fmtN(c(k))}</b>
                   {' '}<span className="text-muted">{STAT_LABELS[k]}</span>
@@ -419,7 +444,7 @@ function PlayerStatsSection({ playerId }: { playerId: string }) {
                   // the whole rally, stretched to include the touch if it was tagged after the clip ends
                   return [{
                     key: `${cl.gameId}|${cl.t}|${i}`, youtubeId: g.youtubeId, cams: reelCams(g), s: cl.s, e: Math.max(cl.e, cl.t + 2),
-                    label: `${STAT_LABELS[open]} ${i + 1}${cl.w !== undefined ? ' (counts half)' : ''} · ${cl.title}`, sub: cl.date, star: starredFor(cl.gameId, cl.s) || undefined,
+                    label: `${STAT_LABELS[open]} ${i + 1}${cl.w !== undefined ? ` (counts ${cl.w === 0.5 ? 'half' : cl.w === 0.25 ? 'a quarter' : cl.w})` : ''} · ${cl.title}`, sub: cl.date, star: starredFor(cl.gameId, cl.s) || undefined,
                     extra: <Link to={`/games/${cl.gameId}?t=${cl.t}&r=${cl.s}`} className="shrink-0 text-xs text-muted underline">in game</Link>,
                   }];
                 })} />

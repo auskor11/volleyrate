@@ -14,7 +14,7 @@ export const GAME_RATING = {
   minus: { aerr: 1, serr: 1, rerr: 1, oerr: 1, blocked: 0.5 } as Partial<Record<StatKey, number>>,
   base: 6,          // an even game
   perPoint: 0.5,    // score per net point (per 50 rallies)
-  medals: { gold: 7.5, silver: 6 },  // below silver: bronze
+  medals: { gold: 7, silver: 5.8 },  // below silver: bronze (lowered when the win bonus went, to keep the medal mix about the same)
 } as const;
 
 export type Medal = 'mvp' | 'mvp-lose' | 'gold' | 'silver' | 'bronze';

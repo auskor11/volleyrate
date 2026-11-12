@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth';
 import { saveVoiceNames, usePlayers, type Player } from '../lib/data';
 import {
-  ATTACK_TYPES, DEFAULT_SET_GRADE, GRADED, GRADE_LABELS, SKILLS, guestName, guestTeam, isGuest, deleteGame, fmtTime, isTagged, nextSkill, rallyResult, saveRallies, suggestTouches,
+  ATTACK_TYPES, DEFAULT_SET_GRADE, GRADED, GRADE_LABELS, SKILLS, guestName, guestTeam, isGuest, weightNote, deleteGame, fmtTime, isTagged, nextSkill, rallyResult, saveRallies, suggestTouches,
   updateGame, useGame, type AttackType, type Game, type SameTeam, type Grade, type Rally, type RallyEnd, type Skill, type Touch,
 } from '../lib/games';
 import { createPlayer, withOffset, type YTPlayer } from '../lib/youtube';
@@ -326,7 +326,7 @@ function TouchTagger({ rally, players, name, now, playing, togglePlay, onChange,
 
   const status = !rally ? 'Tap a rally to start tagging'
     : blocked ? 'Enter both teams before tagging'
-    : res ? <>Ended: <b className={res.good ? 'text-good' : 'text-bad'}>{res.label} · {name(res.who)}{res.who2 && <> + {name(res.who2)}</>}</b>{res.assist && <span className="text-muted"> (assist {name(res.assist)})</span>}{res.note && <span className="text-muted"> ({name(res.noteWho)}{res.noteWho2 && <> + {name(res.noteWho2)}</>} {res.note})</span>}{wonBy && <span className="text-muted"> · Team {wonBy.toUpperCase()}'s point</span>}</>
+    : res ? <>Ended: <b className={res.good ? 'text-good' : 'text-bad'}>{res.label} · {name(res.who)}{res.who2 && <> + {name(res.who2)}</>}</b>{res.assist && <span className="text-muted"> (assist {name(res.assist)})</span>}{res.note && <span className="text-muted"> ({name(res.noteWho)}{res.noteWho2 && <> + {name(res.noteWho2)}</>} {res.note})</span>}{res.weight && <span className="text-muted" title="How much this error counts against whoever made it, in ratings and stats"> · error {weightNote(res)}</span>}{wonBy && <span className="text-muted"> · Team {wonBy.toUpperCase()}'s point</span>}</>
     : touches.length ? 'Next touch, or how did it end?' : 'Who served?';
   const why = serve?.why ?? '';
 
@@ -1024,7 +1024,7 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
               const res = rallyResult(r, sameTeamIn(game, r));
               if (res) return (
                 <span className={`truncate rounded-full px-2 py-0.5 text-xs ${res.good ? 'bg-good/20 text-good' : 'bg-bad/20 text-bad'}`}>
-                  {res.label} · {name(res.who)}{res.who2 && <> + {name(res.who2)}</>}{res.assist && <span className="opacity-70"> (assist {name(res.assist)})</span>}{res.note && <span className="opacity-70"> ({name(res.noteWho)}{res.noteWho2 && <> + {name(res.noteWho2)}</>} {res.note})</span>}
+                  {res.label} · {name(res.who)}{res.who2 && <> + {name(res.who2)}</>}{res.assist && <span className="opacity-70"> (assist {name(res.assist)})</span>}{res.note && <span className="opacity-70"> ({name(res.noteWho)}{res.noteWho2 && <> + {name(res.noteWho2)}</>} {res.note})</span>}{res.weight && <span className="opacity-70"> · {weightNote(res).replace(/ \(.*\)$/, '')}</span>}
                 </span>
               );
               if (mode === 'tag') return <span className="text-xs text-muted">{r.touches?.length ? `${r.touches.length} touches…` : 'untagged'}</span>;
@@ -1149,6 +1149,17 @@ export function GamePlayer({ game, canDelete, samplePlayers, canEdit = true, can
         ) : mode === 'tag' ? (
           <>
             <p className="hidden text-xs text-muted lg:block">Tag while it plays: tap names (or press 1–9, 0, G / H for guests) as each touch happens. Space = play/pause · ? = all shortcuts.</p>
+            {(() => {  // how many sets have a grade: an ungraded set counts as OK, so setters get little credit or blame
+              const sets = rallies.filter(r => r.st !== 'bad' && r.end).flatMap(r => (r.touches ?? []).filter((t, i) => t.k === 'set' && !(r.end!.r === 'error' && r.end!.i === i)));
+              if (!sets.length) return null;
+              const graded = sets.filter(t => t.q).length;
+              return (
+                <p className="text-xs text-muted" title="A set nobody graded counts as OK in the Setting rating. Grade it Good (A), OK (S) or Poor (D) right after tagging it, or say &quot;good&quot; / &quot;poor&quot; with voice.">
+                  Sets graded: <b className={graded * 2 >= sets.length ? 'text-good' : 'text-ball'}>{graded} of {sets.length}</b>
+                  {graded < sets.length && <> · ungraded sets count as OK. Grade Good / Poor right after the set (A / D) or say "good" / "poor"</>}
+                </p>
+              );
+            })()}
             {!focus && rallyList(listEl2, 'hidden min-h-[8.125rem] flex-1 lg:block', true)}
           </>
         ) : (

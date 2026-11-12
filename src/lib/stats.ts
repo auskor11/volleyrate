@@ -1,4 +1,4 @@
-import { DEFAULT_SET_GRADE, afterPoorTouch, assistIndex, forcedBy, isBlockout, isGuest, isShared, type Game, type Rally, type SameTeam, type Skill, type Touch } from './games';
+import { DEFAULT_SET_GRADE, assistIndex, forcedBy, errorWeight, isGuest, isShared, type Game, type Rally, type SameTeam, type Skill, type Touch } from './games';
 import { courtsFor, gameSetup, teamOf, type CourtState } from './rotation';
 
 /** Teams from a game's court setup, to keep assists within a team (unknown players count as teammates). */
@@ -132,10 +132,9 @@ function addTouches(r: Rally, clip: (t: number) => Clip, add: Add, sameTeam?: Sa
     const f = forcedBy(ts, r.end, sameTeam);
     // a blockout isn't the blocker's error; a forced receive / dig error, or the error ending a scramble after an
     // attack, or one straight after a teammate's poor receive / dig / set, counts half (as in the player ratings)
-    const half = (f >= 0 && (t.k === 'receive' || t.k === 'dig' || f < r.end.i - 1)) || afterPoorTouch(ts, r.end, sameTeam);
-    // a miscommunication: the error is shared, half each
-    const w = (half ? 0.5 : 1) * (isShared(t) ? 0.5 : 1);
-    if (!isBlockout(ts, r.end, sameTeam))
+    // a miscommunication: the error is shared, half each (see errorWeight)
+    const { w } = errorWeight(ts, r.end, sameTeam);
+    if (w > 0)
       for (const p of isShared(t) ? [t.p, t.p2!] : [t.p]) add(p, ERROR[t.k] ?? 'oerr', { ...clip(t.t), ...(w < 1 ? { w } : {}) });
     if (f >= 0) {
       const by = ts[f];

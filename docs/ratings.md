@@ -114,7 +114,7 @@ A rally counts only if it is not marked "Not a rally", has touches tagged, and h
 
   - **An attack the other team couldn't get back over** also earns the kill (and its assist): they touched it up to 3 times (a block doesn't count), sent nothing over (no attack or free ball), and the rally ended on their error, e.g. attack → dig → hustle set into the net. The error at the end of that scramble counts **0.5**, like a forced receive. Needs the teams set up.
   - After an attack, a receive / dig / block error is always forced. Any other error (a set, a free ball, …) is forced only when the court setup puts the attacker and the player who erred on different teams.
-  - A forced **receive or dig** error counts **0.5** against the defender's Receiving and Consistency (`FORCED_ERROR_WEIGHT`). Other forced errors (block, set, …) count in full.
+  - A forced **receive or dig** error counts **0.5** against the defender's Receiving and Consistency (`errorWeight` in games.ts has every rule for how much an error counts). Other forced errors (block, set, …) count in full.
 
 - **Double blocks:** a block touch can name a second blocker. Both players get the block touch, and both get the block point if it scores (directly or by forcing an error). An attacker who is blocked by two players counts as blocked once.
 - **Error after a poor touch:** an error straight after a teammate's receive, dig or set graded **Poor** counts **0.5** (e.g. a bad pass the setter couldn't save, or a bad set the hitter put into the net). Only a touch actually graded Poor counts (OK or ungraded doesn't). It doesn't stack with a forced or scramble error (still 0.5), but a miscommunication still splits it (0.25 each). Ratings, game ratings and player page counts.
@@ -198,11 +198,11 @@ ratings above.
 
 - **Net points** from that game's tags:
   - plus: kill, ace, block point and set-over point 1 each; assist 0.6; dig 0.25; receive 0.15; block touch 0.15; free ball 0.1
-  - minus: attack, serve, receive/dig and other errors 1 each (0.5 for a forced receive / dig error, e.g. off an ace or a kill, and for the error ending a scramble after an attack); getting blocked 0.5
+  - minus: attack, serve, receive/dig and other errors 1 each (0.5 for a forced receive / dig error, e.g. off an ace or a kill, for the error ending a scramble after an attack, and for an error straight after a teammate's Poor touch; a miscommunication splits it between two players); getting blocked 0.5
 - **Score** = 6 + 0.5 × net points × (50 ÷ tagged rallies in the game), kept between 0 and 10 (no bonus for winning)
   (one decimal). The winner is the team with more points in the game's score sheet (needs the team setup).
 - **MVP** (👑) is the best score on the winning team; **MVP** on the losing team is that team's best.
-  Everyone else gets a medal: **Gold** from 7.5, **Silver** from 6.0, otherwise **Bronze**.
+  Everyone else gets a medal: **Gold** from 7.0, **Silver** from 5.8, otherwise **Bronze**.
 - **Titles:** the game's outright leader (at least 2) in kills, aces, block points, assists ("Playmaker") or digs,
   and "N in a row" for a player credited with the point in 3 or more rallies running.
 - **Session ratings** (on the session recap): each player's average game rating that Saturday, ranked, with the

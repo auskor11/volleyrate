@@ -13,6 +13,8 @@ import { MEDAL_COLOR, MedalBadge } from '../components/MatchCard';
 import { GAME_RATING, matchRatings, type Medal } from '../lib/gameRating';
 import { markText, useMilestones } from '../lib/milestones';
 import { recapImage, shareImage } from '../lib/shareImage';
+import { isLow, useHighlights } from '../lib/highlights';
+import { useAuth } from '../lib/auth';
 
 const LEADERS: { k: StatKey; label: string }[] = [
   { k: 'kill', label: 'Kills' }, { k: 'ace', label: 'Aces' }, { k: 'assist', label: 'Assists' },
@@ -37,7 +39,9 @@ export function Session() {
   const h = useRatingHistory();
   const marks = useMilestones();
   const [sharing, setSharing] = useState(false);
-  const [reel, setReel] = useState<StatKey | 'all'>('all');
+  const [reel, setReel] = useState<StatKey | 'all' | 'low'>('all');
+  const team = !(useAuth()?.isGuest ?? true);  // lowlights are for the team only
+  const allMarks = useHighlights({ all: true });
   if (!games || !players || !h) return null;
   const k = h.sessions.indexOf(date);
   const prev = h.sessions[k - 1], next = h.sessions[k + 1];
@@ -82,7 +86,22 @@ export function Session() {
         label: `${res.label} · ${name(res.who)}${res.who2 && !isGuest(res.who2) ? ` + ${name(res.who2)}` : ''}${res.assist && !isGuest(res.assist) ? ` (assist ${name(res.assist)})` : ''}`, sub: g.title }];
     });
   });
-  const clips = reel === 'all' ? compilation : Object.entries(stats).flatMap(([id, st]) => st[reel].map(c => ({ ...c, who: id })))
+  // "Bloopers": the day's lowlights, one clip per rally (everyone it was saved for in the label)
+  const lowByRally = new Map<string, { gameId: string; s: number; e: number; who: string[]; notes: string[] }>();
+  for (const h of team ? allMarks ?? [] : []) {
+    if (!isLow(h) || !dayGames.some(g => g.id === h.gameId)) continue;
+    const k = `${h.gameId}|${Math.round(h.s)}`;
+    const x = lowByRally.get(k) ?? { gameId: h.gameId, s: h.s, e: h.e, who: [], notes: [] };
+    if (!x.who.includes(h.playerId)) x.who.push(h.playerId);
+    if (h.note && !x.notes.includes(h.note)) x.notes.push(h.note);
+    lowByRally.set(k, x);
+  }
+  const bloopers = [...lowByRally.entries()].sort(([, a], [, b]) => a.gameId.localeCompare(b.gameId) || a.s - b.s).flatMap(([k, x]) => {
+    const g = dayGames.find(y => y.id === x.gameId);
+    return g ? [{ key: `low|${k}`, youtubeId: g.youtubeId, cams: reelCams(g), s: x.s, e: x.e,
+      label: `🙈 ${x.who.map(name).join(' + ')}${x.notes.length ? ` · ${x.notes.join(' / ')}` : ''}`, sub: g.title }] : [];
+  });
+  const clips = reel === 'all' ? compilation : reel === 'low' ? bloopers : Object.entries(stats).flatMap(([id, st]) => st[reel].map(c => ({ ...c, who: id })))
     .sort((a, b) => a.title.localeCompare(b.title) || a.t - b.t)
     .flatMap((c, i) => {
       const g = dayGames.find(x => x.id === c.gameId);
@@ -224,6 +243,12 @@ export function Session() {
               {s === 'all' ? `All (${compilation.length})` : lab(s)}
             </button>
           ))}
+          {bloopers.length > 0 && (
+            <button onClick={() => setReel('low')}
+              className={`rounded-full border px-2.5 py-1 text-xs ${reel === 'low' ? 'border-ball bg-ball/20 text-ball' : 'border-line text-muted'}`}>
+              🙈 Bloopers ({bloopers.length})
+            </button>
+          )}
         </div>
         {clips.length ? <ClipReel key={reel} clips={clips} /> : <p className="text-sm text-muted">None this session.</p>}
       </section>
