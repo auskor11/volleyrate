@@ -85,11 +85,11 @@ function detail(t: Touch, finishedNotError: boolean): StatKey[] {
 const POINT: Partial<Record<Skill, StatKey>> = { serve: 'ace', attack: 'kill', block: 'blockpt', set: 'setpt' };
 const ERROR: Partial<Record<Skill, StatKey>> = { serve: 'serr', receive: 'rerr', attack: 'aerr' };
 
-/** Every tagged touch / result credited to players (guests are skipped). */
-export function computeStats(games: Game[]): Record<string, PlayerStats> {
+/** Every tagged touch / result credited to players (guests are skipped unless `guests`, e.g. for clip reels). */
+export function computeStats(games: Game[], opts?: { guests?: boolean }): Record<string, PlayerStats> {
   const out: Record<string, PlayerStats> = {};
   const add = (pid: string | undefined, k: StatKey | undefined, c: Clip) => {
-    if (!pid || isGuest(pid) || !k) return;
+    if (!pid || (isGuest(pid) && !opts?.guests) || !k) return;
     (out[pid] ??= empty())[k].push(c);
   };
   for (const g of games) {

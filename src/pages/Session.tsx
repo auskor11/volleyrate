@@ -1,7 +1,7 @@
 // A Saturday's recap: who moved in the ratings, the session's leaders, and its plays to watch back to back.
 import { useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { isGuest, rallyResult, useGames } from '../lib/games';
+import { guestName, isGuest, rallyResult, useGames } from '../lib/games';
 import { usePlayers } from '../lib/data';
 import { computeStats, sameTeamIn, STAT_LABELS, type StatKey } from '../lib/stats';
 import { tier } from '../lib/ratings';
@@ -47,7 +47,7 @@ export function Session() {
   const prev = h.sessions[k - 1], next = h.sessions[k + 1];
   const dayGames = games.filter(g => g.date === date).sort((a, b) => a.title.localeCompare(b.title));
   if (!dayGames.length) return <p className="text-muted">No games on {date}. <Link to="/games" className="text-ball">All games</Link></p>;
-  const name = (id: string) => players.find(p => p.id === id)?.name ?? id;
+  const name = (id: string) => isGuest(id) ? guestName(id) : players.find(p => p.id === id)?.name ?? id;
   const photo = (id: string) => players.find(p => p.id === id)?.photo;
 
   // rating changes for everyone who played (index k + 1: after this session; k: before it)
@@ -77,13 +77,13 @@ export function Session() {
   }).sort((a, b) => (b.medal === 'mvp' ? 1 : 0) - (a.medal === 'mvp' ? 1 : 0) || b.avg - a.avg || b.mvps - a.mvps);
   const newMarks = (marks?.reached ?? []).filter(r => r.date === date && players.some(p => p.id === r.player));
   const rallies = dayGames.reduce((n, g) => n + g.rallies.filter(r => r.st !== 'bad').length, 0);
-  // "All": every rally won by a kill, ace, block or set over, once each (a kill's assist is in its label)
+  // "All": every rally won by a kill, ace, block or set over, once each (a kill's assist is in its label); guests' too
   const compilation = dayGames.flatMap(g => {
     return g.rallies.filter(r => r.st !== 'bad').sort((a, b) => a.s - b.s).flatMap(r => {
       const res = rallyResult(r, sameTeamIn(g, r));
-      if (!res?.good || !['Kill', 'Ace', 'Block', 'Set over'].includes(res.label) || isGuest(res.who)) return [];
+      if (!res?.good || !['Kill', 'Ace', 'Block', 'Set over'].includes(res.label)) return [];
       return [{ key: `${g.id}|${r.s}`, youtubeId: g.youtubeId, cams: reelCams(g), s: r.s, e: r.e,
-        label: `${res.label} · ${name(res.who)}${res.who2 && !isGuest(res.who2) ? ` + ${name(res.who2)}` : ''}${res.assist && !isGuest(res.assist) ? ` (assist ${name(res.assist)})` : ''}`, sub: g.title }];
+        label: `${res.label} · ${name(res.who)}${res.who2 ? ` + ${name(res.who2)}` : ''}${res.assist ? ` (assist ${name(res.assist)})` : ''}`, sub: g.title }];
     });
   });
   // "Bloopers": the day's lowlights, one clip per rally (everyone it was saved for in the label)
@@ -101,7 +101,7 @@ export function Session() {
     return g ? [{ key: `low|${k}`, youtubeId: g.youtubeId, cams: reelCams(g), s: x.s, e: x.e,
       label: `🙈 ${x.who.map(name).join(' + ')}${x.notes.length ? ` · ${x.notes.join(' / ')}` : ''}`, sub: g.title }] : [];
   });
-  const clips = reel === 'all' ? compilation : reel === 'low' ? bloopers : Object.entries(stats).flatMap(([id, st]) => st[reel].map(c => ({ ...c, who: id })))
+  const clips = reel === 'all' ? compilation : reel === 'low' ? bloopers : Object.entries(computeStats(dayGames, { guests: true })).flatMap(([id, st]) => st[reel].map(c => ({ ...c, who: id })))
     .sort((a, b) => a.title.localeCompare(b.title) || a.t - b.t)
     .flatMap((c, i) => {
       const g = dayGames.find(x => x.id === c.gameId);
