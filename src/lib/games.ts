@@ -128,7 +128,11 @@ export type SameTeam = (a: string, b: string) => boolean;
 export function forcedBy(touches: Touch[], end: RallyEnd, sameTeam?: SameTeam): number {
   if (end.r !== 'error' || end.i < 1) return -1;
   const err = touches[end.i], prev = touches[end.i - 1];
-  if (prev && err && prev.p !== err.p && FORCED[prev.k]?.includes(err.k)) {
+  // a block that stays on the blocker's side (a teammate plays it next) didn't force anything: the attack did
+  // (only when that player's team is known: a plain 'guest' could be on either side, so the block keeps the credit)
+  const known = (p: string) => !!sameTeam && (!sameTeam(p, 'guest-a') || !sameTeam(p, 'guest-b'));
+  const blockStayed = prev?.k === 'block' && !!err && known(err.p) && known(prev.p) && !!sameTeam?.(prev.p, err.p);
+  if (prev && err && prev.p !== err.p && !blockStayed && FORCED[prev.k]?.includes(err.k)) {
     const defensive = err.k === 'receive' || err.k === 'dig' || err.k === 'block';
     if (defensive || !sameTeam?.(prev.p, err.p)) return end.i - 1;
   }

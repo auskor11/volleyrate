@@ -109,7 +109,7 @@ A rally counts only if it is not marked "Not a rally", has touches tagged, and h
     |---|---|---|
     | Serve | receive / dig | ace |
     | Attack | any touch by the other team (receive, dig, block, set, free ball, …) | kill (plus the assist rule above) |
-    | Block | receive / dig | block point |
+    | Block | receive / dig by the **other** team (if the blocker's own teammate plays it next, the block stayed on their side and the attack gets the kill instead; a plain "guest" whose side isn't known still gives the block point) | block point |
     | Set that goes over | receive / dig / block | set-over point (counts like an assist in set efficiency) |
 
   - **An attack the other team couldn't get back over** also earns the kill (and its assist): they touched it up to 3 times (a block doesn't count), sent nothing over (no attack or free ball), and the rally ended on their error, e.g. attack → dig → hustle set into the net. The error at the end of that scramble counts **0.5**, like a forced receive. Needs the teams set up.

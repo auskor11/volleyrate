@@ -65,7 +65,8 @@ To undo one change for good, revert its commit on `main` (`git revert <commit>`)
 | `v1.38-before-no-win-bonus` | 2026-11-10 | 7229419 Game ratings: no bonus for the winning team |
 | `v1.39-before-lowlights` | 2026-11-10 | a00985a Lowlights: like highlights (🙈 on the game page and stat playlists, a Lowlights section on player pages), stored as highlights with kind 'low' |
 | `v1.40-before-batch` | 2026-11-10 | 718b7be Medal cut-offs, exact error weights on player pages, error notes on results, sets-graded counter, Bloopers reel, head to head, this list |
-| `v1.41-before-offline-stall` | 2026-11-12 | (this fix) Save for offline: copies 8 MB at a time, keeps the screen on, stops with a clear message instead of hanging, shows MB copied, warns about full-size files |
+| `v1.41-before-offline-stall` | 2026-11-12 | 87a72fe Save for offline: copies 8 MB at a time, keeps the screen on, stops with a clear message instead of hanging, shows MB copied, warns about full-size files |
+| `v1.42-before-block-team` | 2026-11-15 | (this fix) A dig error by the blocker's own teammate after a block is the attacker's kill, not a block point (14 Nov G1 rally 12) |
 
 `v1.15-backup-28-oct` and `v1.16-backup-1-nov` are named by date and point at the same code (the net-line change came after both).
 Add a row here with each new tag.
