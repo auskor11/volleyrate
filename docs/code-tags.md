@@ -67,7 +67,8 @@ To undo one change for good, revert its commit on `main` (`git revert <commit>`)
 | `v1.40-before-batch` | 2026-11-10 | 718b7be Medal cut-offs, exact error weights on player pages, error notes on results, sets-graded counter, Bloopers reel, head to head, this list |
 | `v1.41-before-offline-stall` | 2026-11-12 | 87a72fe Save for offline: copies 8 MB at a time, keeps the screen on, stops with a clear message instead of hanging, shows MB copied, warns about full-size files |
 | `v1.42-before-block-team` | 2026-11-15 | eaff3d2 A dig error by the blocker's own teammate after a block is the attacker's kill, not a block point (14 Nov G1 rally 12) |
-| `v1.43-before-guest-clips` | 2026-11-15 | (this fix) Watch the session includes guests' clips (All and the Kills / Aces / Blocks / Assists reels), shown as Guest A / Guest B |
+| `v1.43-before-guest-clips` | 2026-11-15 | 27bec2a Watch the session includes guests' clips (All and the Kills / Aces / Blocks / Assists reels), shown as Guest A / Guest B |
+| `v1.44-before-backgrounds` | 2026-11-16 | (this change) Backgrounds: Team photo (players only, stored in backgrounds/team, set in Admin → Access; the default), Rainbow (everyone), None; picked in the account menu |
 
 `v1.15-backup-28-oct` and `v1.16-backup-1-nov` are named by date and point at the same code (the net-line change came after both).
 Add a row here with each new tag.

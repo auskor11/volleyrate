@@ -129,6 +129,16 @@ service cloud.firestore {
       }
     }
 
+    // App backgrounds only players may see (e.g. a team photo): a small image stored inline. Public
+    // backgrounds (the rainbow flag) are drawn by the app itself, so nothing here is public.
+    match /backgrounds/{id} {
+      allow read: if isPlayer();
+      allow write: if isAdmin()
+        && request.resource.data.image is string && request.resource.data.image.size() < 900000
+        && request.resource.data.image.matches('^data:image/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$');
+      allow delete: if isAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { setTheme, useTheme } from '../lib/theme';
+import { BACKGROUNDS, RAINBOW, setBackground, useBackground, useTeamImage } from '../lib/background';
 import { useAccessRequests } from '../lib/data';
 
 export function Logo({ className = 'h-7 w-7' }: { className?: string }) {
@@ -38,7 +39,7 @@ function AccountMenu({ up = false }: { up?: boolean }) {
     <div ref={ref} className="relative flex items-center gap-2">
       <button onClick={signIn} className="rounded-full bg-ink px-3.5 py-1.5 text-sm font-semibold text-bg">Sign in</button>
       <button onClick={() => setOpen(o => !o)} aria-label="Look" className="flex h-9 w-9 items-center justify-center rounded-full bg-raised text-muted ring-1 ring-line">◐</button>
-      {open && <div className={`absolute z-30 w-64 ${up ? 'bottom-11 left-0' : 'right-0 top-11'} overflow-hidden rounded-xl border border-line bg-surface shadow-xl shadow-black/50`}><ThemeSwitch /></div>}
+      {open && <div className={`absolute z-30 w-64 ${up ? 'bottom-11 left-0' : 'right-0 top-11'} overflow-hidden rounded-xl border border-line bg-surface shadow-xl shadow-black/50`}><ThemeSwitch /><BackgroundSwitch /></div>}
     </div>
   );
   const initial = (user?.displayName || user?.email || '?')[0].toUpperCase();
@@ -58,6 +59,7 @@ function AccountMenu({ up = false }: { up?: boolean }) {
             <span className="mt-1 inline-block rounded bg-ball/20 px-1.5 text-xs text-ball">{isGuest ? 'guest' : member?.role}</span>
           </div>
           <ThemeSwitch />
+          <BackgroundSwitch />
           <button onClick={signOut} className="w-full px-4 py-3 text-left text-bad hover:bg-raised">Sign out</button>
         </div>
       )}
@@ -83,6 +85,42 @@ function ThemeSwitch() {
   );
 }
 
+/** The background picture, remembered on this device. The team photo is offered to players only. */
+function BackgroundSwitch() {
+  const { isPlayer } = useAuth();
+  const b = useBackground();
+  const opts = BACKGROUNDS.filter(o => !o.players || isPlayer);
+  const shown = opts.some(o => o.id === b) ? b : 'none';
+  return (
+    <div className="border-b border-line px-4 py-3">
+      <div className="mb-1.5 text-xs text-muted">Background</div>
+      <div className="flex rounded-lg bg-raised p-0.5 text-sm">
+        {opts.map(o => (
+          <button key={o.id} onClick={() => setBackground(o.id)}
+            className={`flex-1 rounded-md py-1.5 ${shown === o.id ? 'bg-ball font-semibold text-bg' : 'text-muted'}`}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The chosen picture behind the whole app, dimmed so the pages stay readable. */
+function AppBackground() {
+  const { isPlayer } = useAuth();
+  const b = useBackground();
+  const team = useTeamImage(isPlayer && b === 'team');
+  const image = b === 'rainbow' ? RAINBOW : b === 'team' && isPlayer && team ? `url(${team})` : null;
+  if (!image) return null;
+  return (
+    <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
+      <div className="absolute inset-0 bg-cover" style={{ backgroundImage: image, backgroundPosition: 'center 30%' }} />
+      <div className="absolute inset-0 bg-bg/75" />
+    </div>
+  );
+}
+
 const NavIcon = ({ d }: { d: string }) => (
   <svg viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round">
     <path d={d} />
@@ -98,6 +136,7 @@ export function Layout() {
   const all = [...tabs, ...(isAdmin ? [adminTab] : [])];
   return (
     <>
+    <AppBackground />
     {clean && (  // Clean, on big screens: a slim sidebar instead of the phone-style bottom bar
       <aside className="app-side fixed inset-y-0 left-0 z-20 hidden w-52 flex-col gap-1 border-r border-line bg-bg px-3 py-4 lg:flex">
         <div className="mb-4 flex items-center gap-2 px-2"><Logo /><span className="font-display text-lg font-bold">VolleyRate</span></div>

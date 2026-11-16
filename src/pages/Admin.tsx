@@ -10,6 +10,7 @@ import { buildModel, effectiveRatings, METRICS, DEFAULT_SETTINGS, type EngineSet
 import { saveEngineSettings, useEngineSettings, useRatedPlayers } from '../lib/rated';
 import { createBackup, restoreBackup, useBackups } from '../lib/backups';
 import { Link } from 'react-router-dom';
+import { saveTeamImage, useTeamImage } from '../lib/background';
 import {
   activateModel, activeModelInfo, baseRows, evaluate, leaveOneOut, loadActiveModel, prob, resetModel, rowsFromGames, train,
   type Eval, type Model,
@@ -351,7 +352,33 @@ function Access() {
           ))}
         </ul>
       </section>
+      <TeamBackground />
     </div>
+  );
+}
+
+/** The players-only "Team photo" background: stored in the database, readable by players and admins only. */
+function TeamBackground() {
+  const current = useTeamImage(true);
+  const [state, setState] = useState('');
+  const pick = async (f: File) => {
+    setState('Saving…');
+    try { await saveTeamImage(f); setState('✓ Saved. Players see it unless they picked another background.'); }
+    catch (e) { setState(`Couldn't save it: ${(e as Error).message}`); }
+  };
+  return (
+    <section className={card}>
+      <h2 className="font-semibold">Team photo background</h2>
+      <p className="mt-1 text-sm text-muted">The default background for players and admins (not guests, viewers or editors). Each person can switch to Rainbow or None in their account menu.</p>
+      <div className="mt-3 flex items-center gap-3">
+        {current ? <img src={current} alt="" className="h-20 w-14 rounded-md object-cover ring-1 ring-line" /> : <span className="text-sm text-muted">Not set yet.</span>}
+        <label className="cursor-pointer rounded-lg border border-line px-3 py-2 text-sm">
+          {current ? 'Change picture' : 'Choose picture'}
+          <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && pick(e.target.files[0])} />
+        </label>
+      </div>
+      {state && <p className="mt-2 text-sm text-muted">{state}</p>}
+    </section>
   );
 }
 

@@ -38,6 +38,12 @@ t('guest reads rating settings', guest, 'get', 'config/ratingsEngine', 'ALLOW');
 t('guest reads detector model', guest, 'get', 'config/detector', 'DENY');
 for (const c of ['members/x', 'highlights/x', 'games/g1/history/x', 'ratingBackups/x', 'accessRequests/x']) t(`guest lists ${c.split('/')[0]}`, guest, 'list', c, 'DENY');
 t('viewer reads highlights', viewer, 'list', 'highlights/x', 'ALLOW');
+// player-only backgrounds: players and admins read; only admins write
+for (const [name, who, ok] of [['guest', guest, 0], ['outsider', outsider, 0], ['viewer', viewer, 0], ['editor', editor, 0], ['player', player, 1], ['member with no role', noRole, 1], ['admin', admin, 1]])
+  t(`${name}: see the player background`, who, 'get', 'backgrounds/team', ok ? 'ALLOW' : 'DENY');
+t('player: change the player background', player, 'update', 'backgrounds/team', 'DENY', { image: photo }, { image: photo });
+t('admin: set the player background', admin, 'create', 'backgrounds/team', 'ALLOW', { image: photo });
+t('admin: background must be an image', admin, 'create', 'backgrounds/team', 'DENY', { image: 'hello' });
 // editing games, by role
 for (const [name, who, edit, create, star] of [['guest', guest, 0, 0, 0], ['outsider', outsider, 0, 0, 0], ['viewer', viewer, 0, 0, 0], ['editor', editor, 1, 0, 0], ['player', player, 1, 1, 1], ['member with no role', noRole, 1, 1, 1], ['admin', admin, 1, 1, 1]]) {
   const R = x => (x ? 'ALLOW' : 'DENY');
